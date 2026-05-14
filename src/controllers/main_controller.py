@@ -19,6 +19,7 @@ class MainController(QObject):
     image_processed = Signal(object)
     thumbnail_ready = Signal(str, object) # Emits (file_path, thumbnail_ndarray)
     folder_loaded = Signal()
+    status_message_changed = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
