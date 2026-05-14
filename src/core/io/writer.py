@@ -6,13 +6,18 @@ def save_image(image_array: np.ndarray, file_path: str) -> bool:
     Saves the provided image array to the specified file path.
     """
     try:
-        # cv2 expects BGR for saving, but if it's Grayscale it handles it automatically
-        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-            # Our numpy array is BGR since we read with cv2 and haven't converted 
-            # the raw_image/cached_image color space, only for display.
-            save_array = image_array
-        else:
-            save_array = image_array
+        save_array = image_array
+        
+        # If float32, we must scale it back to an integer format for saving
+        if image_array.dtype == np.float32:
+            # Check extension to decide bit depth
+            if file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+                save_array = np.clip(image_array * 255.0, 0, 255).astype(np.uint8)
+            elif file_path.lower().endswith(('.tiff', '.tif')):
+                save_array = np.clip(image_array * 65535.0, 0, 65535).astype(np.uint16)
+            else:
+                # Default fallback
+                save_array = np.clip(image_array * 255.0, 0, 255).astype(np.uint8)
             
         return cv2.imwrite(file_path, save_array)
     except Exception as e:

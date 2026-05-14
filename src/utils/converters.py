@@ -18,6 +18,9 @@ def numpy_to_qpixmap(image_array: np.ndarray) -> QPixmap:
 
     if image_array.dtype == np.uint16:
         display_array = (image_array / 256.0).astype(np.uint8)
+    elif image_array.dtype == np.float32:
+        # Scale float [0.0, 1.0] to uint8 [0, 255]
+        display_array = np.clip(image_array * 255.0, 0, 255).astype(np.uint8)
     else:
         display_array = image_array.astype(np.uint8)
 

@@ -1,6 +1,6 @@
 from typing import Optional
 import numpy as np
-
+from src.models.isp_config import PipelineConfig
 
 class FrameContainer:
     """
@@ -21,8 +21,8 @@ class FrameContainer:
         self.raw_image: np.ndarray = image_data
         self.cached_image: Optional[np.ndarray] = None
         
-        # Local ISP parameters (only exposure for MVP)
-        self.exposure_value: float = 0.0
+        # Local ISP parameters configuration
+        self.pipeline_config: PipelineConfig = PipelineConfig()
 
     def update_cache(self, processed_data: np.ndarray) -> None:
         """

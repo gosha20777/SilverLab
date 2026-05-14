@@ -20,6 +20,7 @@ class MainController(QObject):
     thumbnail_ready = Signal(str, object) # Emits (file_path, thumbnail_ndarray)
     folder_loaded = Signal()
     status_message_changed = Signal(str)
+    pipeline_changed = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -47,6 +48,7 @@ class MainController(QObject):
         self.isp_pipeline.process_container(self.sequence.active_container)
         
         self.image_loaded.emit(self.sequence.active_container)
+        self.pipeline_changed.emit()
 
     def load_files(self, file_paths: list[str]) -> None:
         """
@@ -97,18 +99,55 @@ class MainController(QObject):
         display_img = self.sequence.active_container.get_display_image()
         return save_image(display_img, save_path)
 
-    @Slot(float)
-    def on_exposure_value_changed(self, value: float) -> None:
+    def update_node_config(self, index: int, **kwargs) -> None:
         """
-        Slot connected to the UI's exposure slider.
-        Updates the model and requests ISP processing.
+        Generic method to update any ISP node configuration dynamically by index.
+        Triggers ISP processing after the update.
         """
         if self.sequence.active_container is None:
             return
 
-        self.sequence.active_container.exposure_value = value
-        
-        # In MVP we run this synchronously. In future, use QThreadPool here.
+        config = self.sequence.active_container.pipeline_config
+        if 0 <= index < len(config.nodes):
+            node_conf = config.nodes[index]
+            for k, v in kwargs.items():
+                if hasattr(node_conf, k):
+                    setattr(node_conf, k, v)
+                    
+            self.isp_pipeline.process_container(self.sequence.active_container)
+            self.image_processed.emit(self.sequence.active_container)
+
+    def add_node(self, node_config) -> None:
+        if not self.sequence.active_container: return
+        self.sequence.active_container.pipeline_config.nodes.append(node_config)
         self.isp_pipeline.process_container(self.sequence.active_container)
-        
         self.image_processed.emit(self.sequence.active_container)
+        self.pipeline_changed.emit()
+
+    def delete_node(self, index: int) -> None:
+        if not self.sequence.active_container: return
+        config = self.sequence.active_container.pipeline_config
+        if 0 <= index < len(config.nodes):
+            config.nodes.pop(index)
+            self.isp_pipeline.process_container(self.sequence.active_container)
+            self.image_processed.emit(self.sequence.active_container)
+            self.pipeline_changed.emit()
+
+    def move_node(self, index: int, direction: int) -> None:
+        if not self.sequence.active_container: return
+        config = self.sequence.active_container.pipeline_config
+        nodes = config.nodes
+        new_index = index + direction
+        if 0 <= index < len(nodes) and 0 <= new_index < len(nodes):
+            nodes[index], nodes[new_index] = nodes[new_index], nodes[index]
+            self.isp_pipeline.process_container(self.sequence.active_container)
+            self.image_processed.emit(self.sequence.active_container)
+            self.pipeline_changed.emit()
+
+    def toggle_node(self, index: int, state: bool) -> None:
+        if not self.sequence.active_container: return
+        config = self.sequence.active_container.pipeline_config
+        if 0 <= index < len(config.nodes):
+            config.nodes[index].enabled = state
+            self.isp_pipeline.process_container(self.sequence.active_container)
+            self.image_processed.emit(self.sequence.active_container)
