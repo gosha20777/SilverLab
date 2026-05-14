@@ -55,6 +55,10 @@ class InspectorPanel(QScrollArea):
         preset_layout.addWidget(save_btn)
         top_layout.addLayout(preset_layout)
         
+        apply_all_btn = QPushButton("Применить ко всем")
+        apply_all_btn.clicked.connect(self.controller.apply_to_all)
+        top_layout.addWidget(apply_all_btn)
+        
         self.main_layout.addLayout(top_layout)
         self.main_layout.addSpacing(10)
 

@@ -9,6 +9,8 @@ from src.core.io.writer import save_image
 from src.utils.concurrency import Worker
 
 
+from src.models.isp_config import PipelineConfig
+
 class MainController(QObject):
     """
     Main orchestrator for the SilverLab application.
@@ -30,6 +32,14 @@ class MainController(QObject):
         self.thread_pool = QThreadPool.globalInstance()
         self._active_workers = set()
         self.current_job_id = 0
+        self.current_preset = self._load_default_preset()
+
+    def _load_default_preset(self) -> PipelineConfig:
+        try:
+            return PipelineConfig.from_yaml("presets/default.yaml")
+        except Exception as e:
+            print(f"Could not load default preset, using empty: {e}")
+            return PipelineConfig()
 
     def _trigger_pipeline(self, start_node_index: int = 0, is_interactive: bool = False) -> None:
         """
@@ -71,13 +81,38 @@ class MainController(QObject):
         image_data = read_image(file_path)
         if image_data is None: return
 
+        # Find SequenceItem
+        item = next((it for it in self.sequence.items if it.file_path == file_path), None)
+        idx = self.sequence.items.index(item) if item else -1
+        
+        # Assign config
+        if item is not None:
+            if item.pipeline_config is None:
+                item.pipeline_config = self.current_preset.model_copy(deep=True)
+        else:
+            print("Warning: Loaded image not in sequence items.")
+
         container = FrameContainer(file_path, image_data)
-        idx = self.sequence.file_paths.index(file_path) if file_path in self.sequence.file_paths else -1
+        if item is not None and item.pipeline_config is not None:
+            container.pipeline_config = item.pipeline_config
+
         self.sequence.set_active(idx, container)
         
         self.image_loaded.emit(self.sequence.active_container)
         self.pipeline_changed.emit()
         self._trigger_pipeline(is_interactive=False)
+
+    def apply_to_all(self) -> None:
+        """Applies the current active config to all sequence items."""
+        if not self.sequence.active_container: return
+        
+        current_config = self.sequence.active_container.pipeline_config
+        self.current_preset = current_config.model_copy(deep=True) # Update global preset logic
+        
+        for item in self.sequence.items:
+            item.pipeline_config = current_config.model_copy(deep=True)
+            
+        self.status_message_changed.emit(f"Пресет применен ко всем {len(self.sequence.items)} файлам.")
 
     def load_files(self, file_paths: list[str]) -> None:
         self.sequence.set_files(file_paths)

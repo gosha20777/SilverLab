@@ -1,0 +1,18 @@
+name: Default Profile
+nodes:
+- enabled: true
+  node_type: BlackClipNode
+  clip_percent: 0.1
+- enabled: true
+  node_type: WhitePatchNode
+  patch_percent: 99.5
+- enabled: true
+  node_type: ContrastStretchNode
+#- enabled: true
+#  node_type: AdaptiveGammaNode
+#  target_lum: 0.5
+#  min_gamma: 0.6
+#  max_gamma: 1.5
+- enabled: true
+  node_type: VibranceNode
+  strength: 0.3

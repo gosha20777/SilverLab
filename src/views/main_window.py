@@ -9,6 +9,7 @@ from src.controllers.main_controller import MainController
 from src.utils.converters import numpy_to_qpixmap
 from src.views.canvas.viewport import CanvasViewport
 from src.views.panels.inspector import InspectorPanel
+from src.views.panels.sequence_panel import SequencePanel
 
 
 class MainWindow(QMainWindow):
@@ -83,13 +84,8 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
 
         # 1. Left Panel (Gallery)
-        self.gallery_list = QListWidget()
-        self.gallery_list.setViewMode(QListWidget.IconMode)
-        self.gallery_list.setIconSize(QSize(120, 120))
-        self.gallery_list.setResizeMode(QListWidget.Adjust)
-        self.gallery_list.setSpacing(10)
-        
-        splitter.addWidget(self.gallery_list)
+        self.sequence_panel = SequencePanel(self.controller)
+        splitter.addWidget(self.sequence_panel)
 
         # 2. Central Panel (Canvas Viewport)
         self.canvas_viewport = CanvasViewport(self.controller)
@@ -111,12 +107,7 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         # Controller bindings
-        self.controller.folder_loaded.connect(self._on_folder_loaded)
-        self.controller.thumbnail_ready.connect(self._add_thumbnail_to_gallery)
         self.controller.status_message_changed.connect(self.status_bar.showMessage)
-        
-        # Gallery clicks
-        self.gallery_list.itemClicked.connect(self._on_gallery_item_clicked)
 
     def _on_load_clicked(self) -> None:
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -140,19 +131,3 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Saved successfully to {save_path}", 3000)
             else:
                 self.status_bar.showMessage(f"Failed to save {save_path}", 3000)
-
-    def _on_folder_loaded(self) -> None:
-        self.gallery_list.clear()
-
-    def _add_thumbnail_to_gallery(self, file_path: str, thumbnail_data: object) -> None:
-        pixmap = numpy_to_qpixmap(thumbnail_data)
-        icon = QIcon(pixmap)
-        
-        item = QListWidgetItem(icon, os.path.basename(file_path))
-        item.setData(Qt.UserRole, file_path) 
-        self.gallery_list.addItem(item)
-
-    def _on_gallery_item_clicked(self, item: QListWidgetItem) -> None:
-        file_path = item.data(Qt.UserRole)
-        if file_path:
-            self.controller.load_image(file_path)
