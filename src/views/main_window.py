@@ -1,9 +1,11 @@
+import os
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter, 
     QListWidget, QPushButton, QSlider, QLabel, QFileDialog,
-    QGraphicsView, QGraphicsScene
+    QGraphicsView, QGraphicsScene, QListWidgetItem, QMenuBar, QMenu
 )
-from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QSize
 from src.controllers.main_controller import MainController
 from src.models.frame_container import FrameContainer
 from src.utils.converters import numpy_to_qpixmap
@@ -11,16 +13,63 @@ from src.utils.converters import numpy_to_qpixmap
 
 class MainWindow(QMainWindow):
     """
-    Main Application Window providing the 3-column UI layout.
+    Main Application Window providing the 3-column UI layout and Main Menu.
     """
     def __init__(self, controller: MainController) -> None:
         super().__init__()
         self.controller = controller
-        self.setWindowTitle("SilverLab MVP v0.1")
+        self.setWindowTitle("SilverLab MVP v0.2")
         self.resize(1200, 800)
 
+        self._setup_menu()
         self._setup_ui()
         self._connect_signals()
+
+    def _setup_menu(self) -> None:
+        menu_bar = self.menuBar()
+        
+        # 1. File Menu
+        file_menu = menu_bar.addMenu("Файл (File)")
+        
+        open_image_action = file_menu.addAction("Открыть скан (Open Image)...")
+        open_image_action.triggered.connect(self._on_load_clicked)
+        
+        open_folder_action = file_menu.addAction("Открыть папку (Open Folder)...")
+        open_folder_action.triggered.connect(self._on_load_folder_clicked)
+        
+        save_current_action = file_menu.addAction("Сохранить текущий (Save Current)...")
+        save_current_action.triggered.connect(self._on_save_current_clicked)
+        
+        file_menu.addSeparator()
+        
+        batch_export_action = file_menu.addAction("Пакетный экспорт (Batch Export)...")
+        batch_export_action.triggered.connect(lambda: print("Batch export not implemented"))
+        
+        file_menu.addSeparator()
+        
+        exit_action = file_menu.addAction("Выход (Exit)")
+        exit_action.triggered.connect(self.close)
+
+        # 2. Image Menu
+        image_menu = menu_bar.addMenu("Изображение (Image)")
+        
+        tools_menu = image_menu.addMenu("Инструменты (Tools)")
+        tools_menu.addAction("Кадрирование (Crop)").triggered.connect(lambda: print("Crop mock"))
+        tools_menu.addAction("Баланс белого (White Balance)").triggered.connect(lambda: print("WB mock"))
+        
+        geometry_menu = image_menu.addMenu("Геометрия (Geometry)")
+        geometry_menu.addAction("Поворот на 90° по ч.с.").triggered.connect(lambda: print("Rotate CW mock"))
+        geometry_menu.addAction("Поворот на 90° против ч.с.").triggered.connect(lambda: print("Rotate CCW mock"))
+        geometry_menu.addAction("Авто-выравнивание").triggered.connect(lambda: print("Auto-straighten mock"))
+        
+        image_menu.addSeparator()
+        image_menu.addAction("Сбросить настройки (Reset Settings)").triggered.connect(lambda: print("Reset mock"))
+
+        # 3. Pipeline Menu
+        pipeline_menu = menu_bar.addMenu("Конвейер (Pipeline)")
+        pipeline_menu.addAction("Управление узлами (Manage Nodes)").triggered.connect(lambda: print("Manage nodes mock"))
+        pipeline_menu.addAction("Загрузить пресет (Load Preset)").triggered.connect(lambda: print("Load preset mock"))
+        pipeline_menu.addAction("Сохранить пресет (Save Preset)").triggered.connect(lambda: print("Save preset mock"))
 
     def _setup_ui(self) -> None:
         # Main Layout
@@ -35,7 +84,12 @@ class MainWindow(QMainWindow):
 
         # 1. Left Panel (Gallery)
         self.gallery_list = QListWidget()
-        self.gallery_list.addItem("Здесь будут миниатюры файлов")
+        # Set IconMode for thumbnail gallery
+        self.gallery_list.setViewMode(QListWidget.IconMode)
+        self.gallery_list.setIconSize(QSize(120, 120))
+        self.gallery_list.setResizeMode(QListWidget.Adjust)
+        self.gallery_list.setSpacing(10)
+        
         splitter.addWidget(self.gallery_list)
 
         # 2. Central Panel (Canvas)
@@ -48,7 +102,7 @@ class MainWindow(QMainWindow):
         inspector_widget = QWidget()
         inspector_layout = QVBoxLayout(inspector_widget)
         
-        self.load_button = QPushButton("Загрузить скан (Load Image)")
+        self.load_button = QPushButton("Загрузить папку (Load Folder)")
         inspector_layout.addWidget(self.load_button)
         
         inspector_layout.addSpacing(20)
@@ -79,7 +133,7 @@ class MainWindow(QMainWindow):
         self.canvas_view.wheelEvent = self._on_canvas_wheel_event
 
     def _connect_signals(self) -> None:
-        self.load_button.clicked.connect(self._on_load_clicked)
+        self.load_button.clicked.connect(self._on_load_folder_clicked)
         self.exposure_slider.valueChanged.connect(self._on_slider_changed)
         
         self.align_button.clicked.connect(lambda: print("Auto-align not implemented yet."))
@@ -88,11 +142,49 @@ class MainWindow(QMainWindow):
         # Connect controller signals
         self.controller.image_loaded.connect(self._render_container)
         self.controller.image_processed.connect(self._render_container)
+        self.controller.folder_loaded.connect(self._on_folder_loaded)
+        self.controller.thumbnail_ready.connect(self._add_thumbnail_to_gallery)
+        
+        # Gallery clicks
+        self.gallery_list.itemClicked.connect(self._on_gallery_item_clicked)
 
     def _on_load_clicked(self) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Image", "", "Images (*.tiff *.tif *.jpg *.jpeg *.png)"
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "Open Image(s)", "", "Images (*.tiff *.tif *.jpg *.jpeg *.png)"
         )
+        if file_paths:
+            self.controller.load_files(file_paths)
+
+    def _on_load_folder_clicked(self) -> None:
+        folder_path = QFileDialog.getExistingDirectory(self, "Open Folder")
+        if folder_path:
+            self.controller.load_folder(folder_path)
+
+    def _on_save_current_clicked(self) -> None:
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Image", "", "JPEG (*.jpg);;TIFF (*.tiff);;PNG (*.png)"
+        )
+        if save_path:
+            success = self.controller.save_current_image(save_path)
+            if success:
+                print(f"Saved successfully to {save_path}")
+            else:
+                print(f"Failed to save {save_path}")
+
+    def _on_folder_loaded(self) -> None:
+        self.gallery_list.clear()
+
+    def _add_thumbnail_to_gallery(self, file_path: str, thumbnail_data: object) -> None:
+        pixmap = numpy_to_qpixmap(thumbnail_data)
+        icon = QIcon(pixmap)
+        
+        item = QListWidgetItem(icon, os.path.basename(file_path))
+        # Store full path in data for easy retrieval
+        item.setData(Qt.UserRole, file_path) 
+        self.gallery_list.addItem(item)
+
+    def _on_gallery_item_clicked(self, item: QListWidgetItem) -> None:
+        file_path = item.data(Qt.UserRole)
         if file_path:
             self.controller.load_image(file_path)
 
@@ -111,7 +203,6 @@ class MainWindow(QMainWindow):
         self.scene.clear()
         self.scene.addPixmap(pixmap)
         
-        # We can center the scene items if we want, or just let scrollbars handle it
         self.canvas_view.setSceneRect(self.scene.itemsBoundingRect())
 
     def _on_canvas_wheel_event(self, event) -> None:
