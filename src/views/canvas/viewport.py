@@ -57,6 +57,7 @@ class CanvasViewport(QWidget):
     def _connect_signals(self) -> None:
         self.controller.image_loaded.connect(self.render_container)
         self.controller.image_processed.connect(self.render_container)
+        self.controller.proxy_processed.connect(self.render_proxy)
         
         # Tool actions
         self.action_pan.triggered.connect(self._activate_pan_tool)
@@ -85,9 +86,29 @@ class CanvasViewport(QWidget):
             self.controller.status_message_changed.emit("Инструмент: Picker. Кликните по области для баланса белого.")
 
     def render_container(self, container: FrameContainer) -> None:
-        display_array = container.get_display_image()
+        display_array = container.get_display_image(is_proxy=False)
         pixmap = numpy_to_qpixmap(display_array)
         
         self.scene.clear()
         self.scene.addPixmap(pixmap)
         self.view.setSceneRect(self.scene.itemsBoundingRect())
+
+    def render_proxy(self, container: FrameContainer) -> None:
+        display_array = container.get_display_image(is_proxy=True)
+        pixmap = numpy_to_qpixmap(display_array)
+        
+        # When rendering proxy, we keep the original scene rect so it doesn't jump
+        rect = self.scene.itemsBoundingRect() if self.scene.items() else None
+        
+        self.scene.clear()
+        pixmap_item = self.scene.addPixmap(pixmap)
+        
+        if rect and not rect.isEmpty():
+            # Scale proxy pixmap visually to fill the same scene rect
+            # so the zoom level doesn't jump when swapping between full and proxy.
+            scale_x = rect.width() / pixmap.width()
+            scale_y = rect.height() / pixmap.height()
+            pixmap_item.setScale(max(scale_x, scale_y))
+            self.view.setSceneRect(rect)
+        else:
+            self.view.setSceneRect(self.scene.itemsBoundingRect())

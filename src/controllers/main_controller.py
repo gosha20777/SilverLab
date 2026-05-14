@@ -17,7 +17,8 @@ class MainController(QObject):
     # Signals to communicate with the UI
     image_loaded = Signal(object)  # Emits the updated FrameContainer
     image_processed = Signal(object)
-    thumbnail_ready = Signal(str, object) # Emits (file_path, thumbnail_ndarray)
+    proxy_processed = Signal(object)
+    thumbnail_ready = Signal(str, object)
     folder_loaded = Signal()
     status_message_changed = Signal(str)
     pipeline_changed = Signal()
@@ -28,33 +29,57 @@ class MainController(QObject):
         self.isp_pipeline = ISPPipeline()
         self.thread_pool = QThreadPool.globalInstance()
         self._active_workers = set()
+        self.current_job_id = 0
+
+    def _trigger_pipeline(self, start_node_index: int = 0, is_interactive: bool = False) -> None:
+        """
+        Triggers ISP processing. If interactive, processes proxy synchronously.
+        If not interactive, triggers proxy synchronously, then dispatches background job for full res.
+        """
+        if not self.sequence.active_container:
+            return
+            
+        container = self.sequence.active_container
+        
+        # 1. Fast Proxy Process (Synchronous)
+        self.isp_pipeline.process_container(container, is_proxy=True, start_node_index=start_node_index)
+        self.proxy_processed.emit(container)
+        
+        if is_interactive:
+            return
+            
+        # 2. Full Process (Asynchronous)
+        self.current_job_id += 1
+        job_id = self.current_job_id
+        
+        def task():
+            self.isp_pipeline.process_container(container, is_proxy=False, start_node_index=0)
+            return container
+
+        worker = Worker(task)
+        self._active_workers.add(worker)
+        
+        def on_result(res_container):
+            if self.current_job_id == job_id:
+                self.image_processed.emit(res_container)
+                
+        worker.signals.result.connect(on_result)
+        worker.signals.finished.connect(lambda w=worker: self._active_workers.discard(w))
+        self.thread_pool.start(worker)
 
     def load_image(self, file_path: str) -> None:
-        """
-        Loads an image from disk using OpenCV (IMREAD_UNCHANGED) and initializes the container.
-        """
         image_data = read_image(file_path)
-        if image_data is None:
-            print(f"Failed to load image at {file_path}")
-            return
+        if image_data is None: return
 
         container = FrameContainer(file_path, image_data)
-        
-        # Find index
         idx = self.sequence.file_paths.index(file_path) if file_path in self.sequence.file_paths else -1
         self.sequence.set_active(idx, container)
         
-        # Run initial ISP to populate the cache
-        self.isp_pipeline.process_container(self.sequence.active_container)
-        
         self.image_loaded.emit(self.sequence.active_container)
         self.pipeline_changed.emit()
+        self._trigger_pipeline(is_interactive=False)
 
     def load_files(self, file_paths: list[str]) -> None:
-        """
-        Clears current sequence, sets new files, and generates thumbnails.
-        Automatically loads the first image to the canvas.
-        """
         self.sequence.set_files(file_paths)
         self.folder_loaded.emit()
 
@@ -72,15 +97,8 @@ class MainController(QObject):
             self.load_image(file_paths[0])
 
     def load_folder(self, folder_path: str) -> None:
-        """
-        Scans folder for images, resets sequence, and fires thumbnail workers.
-        """
         valid_exts = ('.tiff', '.tif', '.jpg', '.jpeg', '.png')
-        files = []
-        for f in os.listdir(folder_path):
-            if f.lower().endswith(valid_exts):
-                files.append(os.path.join(folder_path, f))
-                
+        files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.lower().endswith(valid_exts)]
         files.sort()
         self.load_files(files)
 
@@ -90,48 +108,37 @@ class MainController(QObject):
             self.thumbnail_ready.emit(file_path, thumbnail_data)
 
     def save_current_image(self, save_path: str) -> bool:
-        """
-        Saves the current cached display image to the given path.
-        """
-        if not self.sequence.active_container:
-            return False
-            
-        display_img = self.sequence.active_container.get_display_image()
+        if not self.sequence.active_container: return False
+        display_img = self.sequence.active_container.get_display_image(is_proxy=False)
         return save_image(display_img, save_path)
 
-    def update_node_config(self, index: int, **kwargs) -> None:
-        """
-        Generic method to update any ISP node configuration dynamically by index.
-        Triggers ISP processing after the update.
-        """
-        if self.sequence.active_container is None:
-            return
-
+    def update_node_config_interactive(self, index: int, **kwargs) -> None:
+        if not self.sequence.active_container: return
         config = self.sequence.active_container.pipeline_config
         if 0 <= index < len(config.nodes):
-            node_conf = config.nodes[index]
             for k, v in kwargs.items():
-                if hasattr(node_conf, k):
-                    setattr(node_conf, k, v)
-                    
-            self.isp_pipeline.process_container(self.sequence.active_container)
-            self.image_processed.emit(self.sequence.active_container)
+                if hasattr(config.nodes[index], k):
+                    setattr(config.nodes[index], k, v)
+            self._trigger_pipeline(start_node_index=index, is_interactive=True)
+
+    def update_node_config_final(self) -> None:
+        # Full recalculation after slider release
+        self._trigger_pipeline(start_node_index=0, is_interactive=False)
 
     def add_node(self, node_config) -> None:
         if not self.sequence.active_container: return
         self.sequence.active_container.pipeline_config.nodes.append(node_config)
-        self.isp_pipeline.process_container(self.sequence.active_container)
-        self.image_processed.emit(self.sequence.active_container)
         self.pipeline_changed.emit()
+        self._trigger_pipeline(is_interactive=False)
 
     def delete_node(self, index: int) -> None:
         if not self.sequence.active_container: return
         config = self.sequence.active_container.pipeline_config
         if 0 <= index < len(config.nodes):
             config.nodes.pop(index)
-            self.isp_pipeline.process_container(self.sequence.active_container)
-            self.image_processed.emit(self.sequence.active_container)
             self.pipeline_changed.emit()
+            # Start from the index where deletion happened (for proxy)
+            self._trigger_pipeline(start_node_index=max(0, index), is_interactive=False)
 
     def move_node(self, index: int, direction: int) -> None:
         if not self.sequence.active_container: return
@@ -140,14 +147,13 @@ class MainController(QObject):
         new_index = index + direction
         if 0 <= index < len(nodes) and 0 <= new_index < len(nodes):
             nodes[index], nodes[new_index] = nodes[new_index], nodes[index]
-            self.isp_pipeline.process_container(self.sequence.active_container)
-            self.image_processed.emit(self.sequence.active_container)
             self.pipeline_changed.emit()
+            # Cache invalidates from the top-most affected node
+            self._trigger_pipeline(start_node_index=min(index, new_index), is_interactive=False)
 
     def toggle_node(self, index: int, state: bool) -> None:
         if not self.sequence.active_container: return
         config = self.sequence.active_container.pipeline_config
         if 0 <= index < len(config.nodes):
             config.nodes[index].enabled = state
-            self.isp_pipeline.process_container(self.sequence.active_container)
-            self.image_processed.emit(self.sequence.active_container)
+            self._trigger_pipeline(start_node_index=index, is_interactive=False)

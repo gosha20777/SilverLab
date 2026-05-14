@@ -78,9 +78,8 @@ class InspectorPanel(QScrollArea):
             try:
                 new_config = PipelineConfig.from_yaml(file_path)
                 self.controller.sequence.active_container.pipeline_config = new_config
-                self.controller.isp_pipeline.process_container(self.controller.sequence.active_container)
-                self.controller.image_processed.emit(self.controller.sequence.active_container)
                 self.controller.pipeline_changed.emit()
+                self.controller._trigger_pipeline(is_interactive=False)
             except Exception as e:
                 print(f"Error loading preset: {e}")
 
@@ -162,6 +161,10 @@ class InspectorPanel(QScrollArea):
         def on_change(val):
             real_val = min_val + (val / 100.0) * (max_val - min_val)
             label.setText(f"{name}: {real_val:.2f}")
-            self.controller.update_node_config(index, **{field_name: real_val})
+            self.controller.update_node_config_interactive(index, **{field_name: real_val})
             
+        def on_release():
+            self.controller.update_node_config_final()
+
         slider.valueChanged.connect(on_change)
+        slider.sliderReleased.connect(on_release)
