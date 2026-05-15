@@ -27,32 +27,65 @@ class ResizableRectItem(QGraphicsRectItem):
         
         self.resizing = False
         self.resize_dir = None # 'tl', 'tr', 'bl', 'br', 'l', 'r', 't', 'b'
+        self.is_final_crop = False
+        self.is_editable = False
         
+    def set_edit_mode(self, editable: bool):
+        self.is_editable = editable
+        if self.is_final_crop:
+            self.setFlag(QGraphicsItem.ItemIsMovable, False)
+            self.setAcceptHoverEvents(False)
+        else:
+            self.setFlag(QGraphicsItem.ItemIsMovable, editable)
+            self.setAcceptHoverEvents(editable)
+            
+        if editable:
+            if self.is_final_crop:
+                self.setPen(QPen(QColor(0, 150, 255, 200), 2, Qt.DashLine))
+                self.setBrush(QBrush(QColor(0, 150, 255, 30)))
+            else:
+                self.setPen(QPen(QColor(0, 255, 0, 200), 2, Qt.DashLine))
+                self.setBrush(QBrush(QColor(0, 255, 0, 30)))
+        else:
+            if self.is_final_crop:
+                self.setPen(QPen(QColor(0, 150, 255, 150), 2, Qt.DashLine))
+                self.setBrush(QBrush(Qt.transparent))
+            else:
+                self.setPen(QPen(QColor(0, 255, 0, 150), 2, Qt.DashLine))
+                self.setBrush(QBrush(Qt.transparent))
+                
     def hoverMoveEvent(self, event: QGraphicsSceneMouseEvent):
+        if not self.is_editable or self.is_final_crop:
+            event.ignore()
+            return
+            
         if self.resizing:
             return super().hoverMoveEvent(event)
             
         pos = event.pos()
         rect = self.rect()
         
+        # Dynamic handle size based on rect dimensions to fix scaling issues
+        hs_x = max(10.0, rect.width() * 0.05)
+        hs_y = max(10.0, rect.height() * 0.05)
+        
         # Check corners first
-        hs = self.handle_size
-        if pos.x() < rect.left() + hs and pos.y() < rect.top() + hs:
+        if pos.x() < rect.left() + hs_x and pos.y() < rect.top() + hs_y:
             self.setCursor(Qt.SizeFDiagCursor)
-        elif pos.x() > rect.right() - hs and pos.y() > rect.bottom() - hs:
+        elif pos.x() > rect.right() - hs_x and pos.y() > rect.bottom() - hs_y:
             self.setCursor(Qt.SizeFDiagCursor)
-        elif pos.x() > rect.right() - hs and pos.y() < rect.top() + hs:
+        elif pos.x() > rect.right() - hs_x and pos.y() < rect.top() + hs_y:
             self.setCursor(Qt.SizeBDiagCursor)
-        elif pos.x() < rect.left() + hs and pos.y() > rect.bottom() - hs:
+        elif pos.x() < rect.left() + hs_x and pos.y() > rect.bottom() - hs_y:
             self.setCursor(Qt.SizeBDiagCursor)
         # Then edges
-        elif pos.x() < rect.left() + hs:
+        elif pos.x() < rect.left() + hs_x:
             self.setCursor(Qt.SizeHorCursor)
-        elif pos.x() > rect.right() - hs:
+        elif pos.x() > rect.right() - hs_x:
             self.setCursor(Qt.SizeHorCursor)
-        elif pos.y() < rect.top() + hs:
+        elif pos.y() < rect.top() + hs_y:
             self.setCursor(Qt.SizeVerCursor)
-        elif pos.y() > rect.bottom() - hs:
+        elif pos.y() > rect.bottom() - hs_y:
             self.setCursor(Qt.SizeVerCursor)
         else:
             self.setCursor(Qt.SizeAllCursor)
@@ -64,27 +97,33 @@ class ResizableRectItem(QGraphicsRectItem):
         super().hoverLeaveEvent(event)
         
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+        if not self.is_editable or self.is_final_crop:
+            event.ignore()
+            return
+            
         if event.button() == Qt.LeftButton:
             pos = event.pos()
             rect = self.rect()
-            hs = self.handle_size
+            
+            hs_x = max(10.0, rect.width() * 0.05)
+            hs_y = max(10.0, rect.height() * 0.05)
             
             # Determine resize direction
-            if pos.x() < rect.left() + hs and pos.y() < rect.top() + hs:
+            if pos.x() < rect.left() + hs_x and pos.y() < rect.top() + hs_y:
                 self.resize_dir = 'tl'
-            elif pos.x() > rect.right() - hs and pos.y() > rect.bottom() - hs:
+            elif pos.x() > rect.right() - hs_x and pos.y() > rect.bottom() - hs_y:
                 self.resize_dir = 'br'
-            elif pos.x() > rect.right() - hs and pos.y() < rect.top() + hs:
+            elif pos.x() > rect.right() - hs_x and pos.y() < rect.top() + hs_y:
                 self.resize_dir = 'tr'
-            elif pos.x() < rect.left() + hs and pos.y() > rect.bottom() - hs:
+            elif pos.x() < rect.left() + hs_x and pos.y() > rect.bottom() - hs_y:
                 self.resize_dir = 'bl'
-            elif pos.x() < rect.left() + hs:
+            elif pos.x() < rect.left() + hs_x:
                 self.resize_dir = 'l'
-            elif pos.x() > rect.right() - hs:
+            elif pos.x() > rect.right() - hs_x:
                 self.resize_dir = 'r'
-            elif pos.y() < rect.top() + hs:
+            elif pos.y() < rect.top() + hs_y:
                 self.resize_dir = 't'
-            elif pos.y() > rect.bottom() - hs:
+            elif pos.y() > rect.bottom() - hs_y:
                 self.resize_dir = 'b'
             else:
                 self.resize_dir = None
@@ -96,6 +135,10 @@ class ResizableRectItem(QGraphicsRectItem):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
+        if not self.is_editable or self.is_final_crop:
+            event.ignore()
+            return
+            
         if self.resizing:
             pos = event.pos()
             rect = self.rect()
@@ -122,6 +165,10 @@ class ResizableRectItem(QGraphicsRectItem):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+        if not self.is_editable or self.is_final_crop:
+            event.ignore()
+            return
+            
         if self.resizing:
             self.resizing = False
             self.setFlag(QGraphicsItem.ItemIsMovable, True)

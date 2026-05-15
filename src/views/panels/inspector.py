@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QScrollArea, QLabel, QSlider, 
-    QPushButton, QHBoxLayout, QFileDialog, QMenu
+    QPushButton, QHBoxLayout, QFileDialog, QMenu, QCheckBox
 )
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import Qt
@@ -163,6 +163,14 @@ class InspectorPanel(QScrollArea):
         elif node_type == "RotationNode":
             self._create_slider(layout, "Угол", -15.0, 15.0, node_config.angle, node_config, "angle", root_index)
         elif node_type == "SplitterNode":
+            cb = QCheckBox("Авто-поворот")
+            cb.setChecked(node_config.apply_rotation)
+            cb.stateChanged.connect(lambda state, c=node_config: self._on_checkbox_changed(c, "apply_rotation", state))
+            layout.addWidget(cb)
+            
+            self._create_slider(layout, "Целевой угол", -5.0, 5.0, node_config.target_angle, node_config, "target_angle", root_index)
+            self._create_slider(layout, "Допуск угла", 0.0, 2.0, node_config.angle_tolerance, node_config, "angle_tolerance", root_index)
+            self._create_slider(layout, "Текущий угол", -5.0, 5.0, node_config.current_angle, node_config, "current_angle", root_index)
             self._create_slider(layout, "Растушевка", 0, 50, node_config.feathering, node_config, "feathering", root_index)
             # Render spoilers for regions if they exist
             if node_config.regions:
@@ -224,3 +232,7 @@ class InspectorPanel(QScrollArea):
 
         slider.valueChanged.connect(on_change)
         slider.sliderReleased.connect(on_release)
+
+    def _on_checkbox_changed(self, node_config, field_name: str, state: int):
+        setattr(node_config, field_name, state == Qt.Checked)
+        self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)

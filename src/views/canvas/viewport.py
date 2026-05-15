@@ -67,23 +67,38 @@ class CanvasViewport(QWidget):
         
     def _activate_pan_tool(self) -> None:
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.current_tool = 'pan'
+        self._update_bbox_modes()
         if hasattr(self.controller, 'status_message_changed'):
             self.controller.status_message_changed.emit("Инструмент: Pan (Перетаскивание). ЛКМ для перемещения.")
             
     def _activate_crop_tool(self) -> None:
         self.view.setDragMode(QGraphicsView.NoDrag)
+        self.current_tool = 'crop'
+        self._update_bbox_modes()
         if hasattr(self.controller, 'status_message_changed'):
             self.controller.status_message_changed.emit("Инструмент: Crop (Обрезка).")
 
     def _activate_straighten_tool(self) -> None:
         self.view.setDragMode(QGraphicsView.NoDrag)
+        self.current_tool = 'straighten'
+        self._update_bbox_modes()
         if hasattr(self.controller, 'status_message_changed'):
             self.controller.status_message_changed.emit("Инструмент: Straighten. Проведите линию горизонта.")
 
     def _activate_picker_tool(self) -> None:
         self.view.setDragMode(QGraphicsView.NoDrag)
+        self.current_tool = 'picker'
+        self._update_bbox_modes()
         if hasattr(self.controller, 'status_message_changed'):
             self.controller.status_message_changed.emit("Инструмент: Picker. Кликните по области для баланса белого.")
+
+    def _update_bbox_modes(self):
+        from src.views.canvas.widgets import ResizableRectItem
+        is_editable = (self.current_tool == 'crop')
+        for item in self.scene.items():
+            if isinstance(item, ResizableRectItem):
+                item.set_edit_mode(is_editable)
 
     def render_container(self, container: FrameContainer) -> None:
         display_array = container.get_display_image(is_proxy=False)
@@ -91,33 +106,30 @@ class CanvasViewport(QWidget):
         
         self.scene.clear()
         pixmap_item = self.scene.addPixmap(pixmap)
-        self.view.setSceneRect(self.scene.itemsBoundingRect())
+        self.view.setSceneRect(pixmap_item.boundingRect())
         self._draw_bboxes(container, pixmap.width(), pixmap.height())
 
     def render_proxy(self, container: FrameContainer) -> None:
         display_array = container.get_display_image(is_proxy=True)
         pixmap = numpy_to_qpixmap(display_array)
         
-        rect = self.scene.itemsBoundingRect() if self.scene.items() else None
-        
         self.scene.clear()
         pixmap_item = self.scene.addPixmap(pixmap)
         
-        scale = 1.0
-        if rect and not rect.isEmpty():
-            scale_x = rect.width() / pixmap.width()
-            scale_y = rect.height() / pixmap.height()
-            scale = max(scale_x, scale_y)
-            pixmap_item.setScale(scale)
-            self.view.setSceneRect(rect)
-        else:
-            self.view.setSceneRect(self.scene.itemsBoundingRect())
+        # Calculate the exact scale factor between full-res and proxy
+        scale = container.raw_image.shape[1] / container.raw_proxy.shape[1]
+        pixmap_item.setScale(scale)
+        
+        # Set scene rect to the exact scaled image dimensions
+        self.view.setSceneRect(pixmap_item.sceneBoundingRect())
             
         self._draw_bboxes(container, pixmap.width() * scale, pixmap.height() * scale)
         
     def _draw_bboxes(self, container: FrameContainer, w: float, h: float) -> None:
         from src.views.canvas.widgets import ResizableRectItem
         from PySide6.QtCore import QRectF
+        
+        is_editable = getattr(self, 'current_tool', 'pan') == 'crop'
         
         config = container.pipeline_config
         for node in config.nodes:
@@ -130,20 +142,56 @@ class CanvasViewport(QWidget):
                     if rw > 0 and rh > 0:
                         rect_item = ResizableRectItem(idx, QRectF(0, 0, rw, rh))
                         rect_item.setPos(rx, ry)
+                        rect_item.set_edit_mode(is_editable)
+                        rect_item.setZValue(1) # Regions are above final_crop
                         rect_item.signals.rect_changed.connect(
                             lambda r_idx, new_rect, n=node, bw=w, bh=h: self._on_bbox_changed(r_idx, new_rect, n, bw, bh)
                         )
                         self.scene.addItem(rect_item)
                         
+                # Final crop bbox
+                fx, fy, fw, fh = getattr(node, 'final_crop', (0.0, 0.0, 1.0, 1.0))
+                rx, ry = fx * w, fy * h
+                rw, rh = fw * w, fh * h
+                
+                if rw > 0 and rh > 0:
+                    rect_item = ResizableRectItem(-1, QRectF(0, 0, rw, rh))
+                    rect_item.is_final_crop = True
+                    rect_item.setPos(rx, ry)
+                    rect_item.set_edit_mode(is_editable)
+                    rect_item.setZValue(0) # Final crop is below regions
+                    rect_item.signals.rect_changed.connect(
+                        lambda r_idx, new_rect, n=node, bw=w, bh=h: self._on_bbox_changed(r_idx, new_rect, n, bw, bh)
+                    )
+                    self.scene.addItem(rect_item)
+                        
     def _on_bbox_changed(self, region_index: int, new_rect, splitter_node, bw: float, bh: float) -> None:
-        # new_rect is in scene coordinates (pixels)
-        # Convert back to normalized coordinates
         nx = new_rect.x() / bw
         ny = new_rect.y() / bh
         nw = new_rect.width() / bw
         nh = new_rect.height() / bh
         
-        splitter_node.regions[region_index].bbox = (nx, ny, nw, nh)
+        if region_index == -1:
+            splitter_node.final_crop = (nx, ny, nw, nh)
+        else:
+            splitter_node.regions[region_index].bbox = (nx, ny, nw, nh)
+            # Re-calculate final crop based on new regions
+            if len(splitter_node.regions) == 2:
+                r1 = splitter_node.regions[0].bbox
+                r2 = splitter_node.regions[1].bbox
+                top = min(r1[1], r2[1])
+                bottom = max(r1[1] + r1[3], r2[1] + r2[3])
+                left = min(r1[0], r2[0])
+                right = max(r1[0] + r1[2], r2[0] + r2[2])
+                
+                # Apply 2% margins as in auto
+                if top > 0.04: top = 0.02
+                if bottom < 0.96: bottom = 0.98
+                if left > 0.04: left = 0.02
+                if right < 0.96: right = 0.98
+                
+                splitter_node.final_crop = (left, top, right - left, bottom - top)
+            
         splitter_node.mode = "manual"
         
         self.controller.pipeline_changed.emit()

@@ -46,6 +46,11 @@ class SplitterConfig(BaseNodeConfig):
     mode: Literal["auto_diptych", "manual"] = "auto_diptych"
     feathering: int = Field(default=15, ge=0, le=100, description="Растушевка (px)")
     regions: list[RegionConfig] = Field(default_factory=list)
+    apply_rotation: bool = True
+    target_angle: float = -0.7
+    angle_tolerance: float = 0.3
+    current_angle: float = 0.0
+    final_crop: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0) # Normalized x, y, w, h
 
 # Polymorphic list of nodes using Pydantic's discriminator
 AnyNodeConfig = Annotated[
