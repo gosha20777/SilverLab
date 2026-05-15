@@ -9,7 +9,7 @@ class AdaptiveGammaNode(BaseISPNode):
     """
     ISP Node for Adaptive Gamma correction (pulls midtones).
     """
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: AdaptiveGammaConfig, **kwargs) -> np.ndarray:
         if not isinstance(config, AdaptiveGammaConfig):
             raise ValueError("Expected AdaptiveGammaConfig")
             

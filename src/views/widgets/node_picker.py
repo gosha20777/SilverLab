@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout
 from src.models.isp_config import (
     ExposureConfig, BlackClipConfig, WhitePatchConfig, 
-    ContrastStretchConfig, AdaptiveGammaConfig, VibranceConfig
+    ContrastStretchConfig, AdaptiveGammaConfig, VibranceConfig,
+    RotationConfig, SplitterConfig
 )
 
 class NodePickerDialog(QDialog):
@@ -23,7 +24,9 @@ class NodePickerDialog(QDialog):
             ("Баланс Белого (White Patch)", WhitePatchConfig),
             ("Контраст (Linear Stretch)", ContrastStretchConfig),
             ("Средние тона (Adaptive Gamma)", AdaptiveGammaConfig),
-            ("Насыщенность (Vibrance)", VibranceConfig)
+            ("Насыщенность (Vibrance)", VibranceConfig),
+            ("Поворот (Rotation)", RotationConfig),
+            ("Диптих (Splitter)", SplitterConfig)
         ]
         
         for name, _ in self.available_nodes:

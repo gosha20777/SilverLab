@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QScrollArea, QLabel, QSlider, 
-    QPushButton, QHBoxLayout, QFileDialog
+    QPushButton, QHBoxLayout, QFileDialog, QMenu
 )
+from PySide6.QtGui import QCursor
 from PySide6.QtCore import Qt
 from src.controllers.main_controller import MainController
 from src.views.widgets.collapsible import CollapsibleSection
@@ -42,7 +43,7 @@ class InspectorPanel(QScrollArea):
         
         add_btn = QPushButton("✚ Добавить фильтр")
         add_btn.setStyleSheet("font-weight: bold; padding: 6px;")
-        add_btn.clicked.connect(self._show_node_picker)
+        add_btn.clicked.connect(lambda: self._show_node_picker())
         top_layout.addWidget(add_btn)
         
         preset_layout = QHBoxLayout()
@@ -64,16 +65,6 @@ class InspectorPanel(QScrollArea):
 
     def _connect_signals(self) -> None:
         self.controller.pipeline_changed.connect(self._render_pipeline)
-
-    def _show_node_picker(self) -> None:
-        if not self.controller.sequence.active_container:
-            return
-            
-        dialog = NodePickerDialog(self)
-        if dialog.exec():
-            new_config = dialog.get_selected_config()
-            if new_config:
-                self.controller.add_node(new_config)
 
     def _load_preset(self) -> None:
         if not self.controller.sequence.active_container: return
@@ -108,11 +99,15 @@ class InspectorPanel(QScrollArea):
             return
             
         config = self.controller.sequence.active_container.pipeline_config
-        for i, node_conf in enumerate(config.nodes):
-            section = self._build_node_ui(node_conf, i)
-            self.nodes_layout.addWidget(section)
+        self._render_node_list(self.nodes_layout, config, is_root=True)
 
-    def _build_node_ui(self, node_config, index: int) -> CollapsibleSection:
+    def _render_node_list(self, layout, pipeline_config, is_root=True, root_index=0):
+        for i, node_conf in enumerate(pipeline_config.nodes):
+            actual_root_idx = i if is_root else root_index
+            section = self._build_node_ui(node_conf, pipeline_config, i, actual_root_idx)
+            layout.addWidget(section)
+
+    def _build_node_ui(self, node_config, parent_pipeline, local_index: int, root_index: int) -> CollapsibleSection:
         node_type = node_config.node_type
         titles = {
             "ExposureNode": "Экспозиция",
@@ -120,7 +115,9 @@ class InspectorPanel(QScrollArea):
             "WhitePatchNode": "Баланс Белого (Авто)",
             "ContrastStretchNode": "Контраст",
             "AdaptiveGammaNode": "Средние тона (Adaptive Gamma)",
-            "VibranceNode": "Насыщенность (Vibrance)"
+            "VibranceNode": "Насыщенность (Vibrance)",
+            "RotationNode": "Поворот (Геометрия)",
+            "SplitterNode": "Диптих (Разделение кадра)"
         }
         
         section = CollapsibleSection(titles.get(node_type, node_type), start_collapsed=False)
@@ -128,29 +125,81 @@ class InspectorPanel(QScrollArea):
         layout = QVBoxLayout()
         
         # Connect Controls
-        section.enabled_changed.connect(lambda state, idx=index: self.controller.toggle_node(idx, state))
-        section.move_up_requested.connect(lambda idx=index: self.controller.move_node(idx, -1))
-        section.move_down_requested.connect(lambda idx=index: self.controller.move_node(idx, 1))
-        section.delete_requested.connect(lambda idx=index: self.controller.delete_node(idx))
+        def on_toggle(state):
+            node_config.enabled = state
+            self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=False)
+            
+        def on_delete():
+            parent_pipeline.nodes.pop(local_index)
+            self.controller.pipeline_changed.emit()
+            self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=False)
+            
+        def on_move(direction):
+            new_idx = local_index + direction
+            if 0 <= new_idx < len(parent_pipeline.nodes):
+                nodes = parent_pipeline.nodes
+                nodes[local_index], nodes[new_idx] = nodes[new_idx], nodes[local_index]
+                self.controller.pipeline_changed.emit()
+                self.controller._trigger_pipeline(start_node_index=root_index if root_index <= new_idx else new_idx, is_interactive=False)
+
+        section.enabled_changed.connect(on_toggle)
+        section.move_up_requested.connect(lambda: on_move(-1))
+        section.move_down_requested.connect(lambda: on_move(1))
+        section.delete_requested.connect(on_delete)
 
         # Sliders
         if node_type == "ExposureNode":
-            self._create_slider(layout, "Сдвиг (EV)", -2.0, 2.0, node_config.value, index, "value")
+            self._create_slider(layout, "Сдвиг (EV)", -2.0, 2.0, node_config.value, node_config, "value", root_index)
         elif node_type == "BlackClipNode":
-            self._create_slider(layout, "Срез (%)", 0.0, 2.0, node_config.clip_percent, index, "clip_percent")
+            self._create_slider(layout, "Срез (%)", 0.0, 2.0, node_config.clip_percent, node_config, "clip_percent", root_index)
         elif node_type == "WhitePatchNode":
-            self._create_slider(layout, "Порог белого (%)", 95.0, 100.0, node_config.patch_percent, index, "patch_percent")
+            self._create_slider(layout, "Порог белого (%)", 95.0, 100.0, node_config.patch_percent, node_config, "patch_percent", root_index)
         elif node_type == "AdaptiveGammaNode":
-            self._create_slider(layout, "Целевая яркость", 0.1, 0.9, node_config.target_lum, index, "target_lum")
+            self._create_slider(layout, "Целевая яркость", 0.1, 0.9, node_config.target_lum, node_config, "target_lum", root_index)
         elif node_type == "VibranceNode":
-            self._create_slider(layout, "Усилие", 0.0, 2.0, node_config.strength, index, "strength")
+            self._create_slider(layout, "Усилие", 0.0, 2.0, node_config.strength, node_config, "strength", root_index)
         elif node_type == "ContrastStretchNode":
             layout.addWidget(QLabel("Линейное растяжение гистограммы.\nНастроек нет."))
+        elif node_type == "RotationNode":
+            self._create_slider(layout, "Угол", -15.0, 15.0, node_config.angle, node_config, "angle", root_index)
+        elif node_type == "SplitterNode":
+            self._create_slider(layout, "Растушевка", 0, 50, node_config.feathering, node_config, "feathering", root_index)
+            # Render spoilers for regions if they exist
+            if node_config.regions:
+                for r_idx, region in enumerate(node_config.regions):
+                    region_group = CollapsibleSection(f"Регион {r_idx + 1}", start_collapsed=True)
+                    region_layout = QVBoxLayout()
+                    self._render_node_list(region_layout, region.pipeline, is_root=False, root_index=root_index)
+                    
+                    # Add node button for this region
+                    add_btn = QPushButton(f"+ Добавить фильтр (Регион {r_idx + 1})")
+                    add_btn.clicked.connect(lambda _, p=region.pipeline, r=root_index: self._show_node_picker(p, r))
+                    region_layout.addWidget(add_btn)
+                    
+                    region_group.set_content_layout(region_layout)
+                    layout.addWidget(region_group)
+            else:
+                layout.addWidget(QLabel("Регионы будут созданы автоматически\nпри рендере."))
             
         section.set_content_layout(layout)
         return section
 
-    def _create_slider(self, layout, name: str, min_val: float, max_val: float, current: float, index: int, field_name: str):
+    def _show_node_picker(self, pipeline_config=None, root_index=0) -> None:
+        if not self.controller.sequence.active_container:
+            return
+            
+        dialog = NodePickerDialog(self)
+        if dialog.exec():
+            new_config = dialog.get_selected_config()
+            if new_config:
+                if pipeline_config is not None:
+                    pipeline_config.nodes.append(new_config)
+                    self.controller.pipeline_changed.emit()
+                    self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=False)
+                else:
+                    self.controller.add_node(new_config)
+
+    def _create_slider(self, layout, name: str, min_val: float, max_val: float, current: float, node_config, field_name: str, root_index: int):
         label = QLabel(f"{name}: {current:.2f}")
         layout.addWidget(label)
         
@@ -159,16 +208,19 @@ class InspectorPanel(QScrollArea):
         slider.setMaximum(100)
         
         initial_pos = int(((current - min_val) / (max_val - min_val)) * 100)
+        # Prevent division by zero if max_val == min_val
+        if max_val == min_val: initial_pos = 0
         slider.setValue(initial_pos)
         layout.addWidget(slider)
         
         def on_change(val):
             real_val = min_val + (val / 100.0) * (max_val - min_val)
             label.setText(f"{name}: {real_val:.2f}")
-            self.controller.update_node_config_interactive(index, **{field_name: real_val})
+            setattr(node_config, field_name, real_val)
+            self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=True)
             
         def on_release():
-            self.controller.update_node_config_final()
+            self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)
 
         slider.valueChanged.connect(on_change)
         slider.sliderReleased.connect(on_release)

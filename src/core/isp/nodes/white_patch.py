@@ -8,7 +8,7 @@ class WhitePatchNode(BaseISPNode):
     """
     ISP Node for White Balance using the White Patch algorithm.
     """
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: WhitePatchConfig, **kwargs) -> np.ndarray:
         if not isinstance(config, WhitePatchConfig):
             raise ValueError("Expected WhitePatchConfig")
             

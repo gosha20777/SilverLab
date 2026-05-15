@@ -1,0 +1,44 @@
+name: Auto Diptych Processing
+nodes:
+- node_type: RotationNode
+  enabled: true
+  angle: -0.7
+- node_type: SplitterNode
+  enabled: true
+  mode: auto_diptych
+  feathering: 15
+  regions:
+  - bbox:
+    - 0
+    - 0
+    - 0
+    - 0
+    pipeline:
+      name: Left Region
+      nodes:
+      - node_type: BlackClipNode
+        enabled: true
+        clip_percent: 0.15
+      - node_type: WhitePatchNode
+        enabled: true
+        patch_percent: 99.0
+      - node_type: VibranceNode
+        enabled: true
+        strength: 0.3
+  - bbox:
+    - 0
+    - 0
+    - 0
+    - 0
+    pipeline:
+      name: Right Region
+      nodes:
+      - node_type: BlackClipNode
+        enabled: true
+        clip_percent: 0.15
+      - node_type: WhitePatchNode
+        enabled: true
+        patch_percent: 99.0
+      - node_type: VibranceNode
+        enabled: true
+        strength: 0.3

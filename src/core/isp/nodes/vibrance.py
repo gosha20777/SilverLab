@@ -8,7 +8,7 @@ class VibranceNode(BaseISPNode):
     """
     ISP Node for smart saturation (Vibrance).
     """
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: VibranceConfig, **kwargs) -> np.ndarray:
         if not isinstance(config, VibranceConfig):
             raise ValueError("Expected VibranceConfig")
             

@@ -8,7 +8,7 @@ class BlackClipNode(BaseISPNode):
     """
     ISP Node for cutting out shadows (film base fog).
     """
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: BlackClipConfig, **kwargs) -> np.ndarray:
         if not isinstance(config, BlackClipConfig):
             raise ValueError("Expected BlackClipConfig")
             

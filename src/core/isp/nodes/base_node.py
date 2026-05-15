@@ -8,7 +8,7 @@ class BaseISPNode(ABC):
     Abstract base class for all Image Signal Processing operations.
     """
     @abstractmethod
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: BaseModel, **kwargs) -> np.ndarray:
         """
         Applies a specific mathematical transformation to the image array.
 

@@ -8,7 +8,7 @@ class ExposureNode(BaseISPNode):
     """
     ISP Node for adjusting image brightness (exposure).
     """
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: ExposureConfig, **kwargs) -> np.ndarray:
         """
         Adjusts the exposure of the image by multiplying the array values.
 

@@ -6,6 +6,8 @@ from src.core.isp.nodes.white_patch import WhitePatchNode
 from src.core.isp.nodes.contrast_stretch import ContrastStretchNode
 from src.core.isp.nodes.adaptive_gamma import AdaptiveGammaNode
 from src.core.isp.nodes.vibrance import VibranceNode
+from src.core.isp.nodes.geometry import RotationNode
+from src.core.isp.nodes.splitter import SplitterNode
 
 # Mapping from Pydantic config node_type to actual implementation class
 NODE_REGISTRY = {
@@ -15,6 +17,8 @@ NODE_REGISTRY = {
     "ContrastStretchNode": ContrastStretchNode,
     "AdaptiveGammaNode": AdaptiveGammaNode,
     "VibranceNode": VibranceNode,
+    "RotationNode": RotationNode,
+    "SplitterNode": SplitterNode,
 }
 
 class ISPPipeline:
@@ -25,6 +29,24 @@ class ISPPipeline:
         # Instantiate all stateless nodes once
         self.node_instances = {name: cls() for name, cls in NODE_REGISTRY.items()}
         self.registry = self.node_instances
+
+    def run_pipeline_on_image(self, image: np.ndarray, pipeline_config) -> np.ndarray:
+        """
+        Executes a nested sub-pipeline without proxy caching.
+        """
+        current_image = image.copy()
+        for node_conf in pipeline_config.nodes:
+            if not node_conf.enabled:
+                continue
+            
+            node_type = node_conf.node_type
+            if node_type in self.registry:
+                node = self.registry[node_type]
+                try:
+                    current_image = node.process(current_image, node_conf, pipeline_engine=self)
+                except Exception as e:
+                    print(f"Error processing nested node {node_type}: {e}")
+        return current_image
 
     def process_container(self, container: FrameContainer, is_proxy: bool = False, start_node_index: int = 0) -> None:
         """
@@ -72,7 +94,7 @@ class ISPPipeline:
             if node_type in self.registry:
                 node = self.registry[node_type]
                 try:
-                    current_image = node.process(current_image, node_conf)
+                    current_image = node.process(current_image, node_conf, pipeline_engine=self)
                 except Exception as e:
                     print(f"Error processing node {node_type}: {e}")
                     

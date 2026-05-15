@@ -8,7 +8,7 @@ class ContrastStretchNode(BaseISPNode):
     """
     ISP Node for linear contrast stretching.
     """
-    def process(self, image: np.ndarray, config: BaseModel) -> np.ndarray:
+    def process(self, image: np.ndarray, config: ContrastStretchConfig, **kwargs) -> np.ndarray:
         if not isinstance(config, ContrastStretchConfig):
             raise ValueError("Expected ContrastStretchConfig")
             

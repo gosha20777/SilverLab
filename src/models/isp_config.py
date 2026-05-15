@@ -1,4 +1,4 @@
-from typing import Literal, Annotated, Union
+from typing import Literal, Annotated, Union, ForwardRef
 from pydantic import BaseModel, Field
 
 class BaseNodeConfig(BaseModel):
@@ -31,6 +31,22 @@ class VibranceConfig(BaseNodeConfig):
     node_type: Literal["VibranceNode"] = "VibranceNode"
     strength: float = Field(default=0.3, ge=0.0, le=2.0, description="Vibrance (Умная насыщенность)")
 
+class RotationConfig(BaseNodeConfig):
+    node_type: Literal["RotationNode"] = "RotationNode"
+    angle: float = Field(default=0.0, ge=-90.0, le=90.0, description="Угол поворота")
+
+PipelineConfigRef = ForwardRef('PipelineConfig')
+
+class RegionConfig(BaseModel):
+    bbox: tuple[int, int, int, int] = (0, 0, 0, 0) # x, y, w, h
+    pipeline: PipelineConfigRef
+
+class SplitterConfig(BaseNodeConfig):
+    node_type: Literal["SplitterNode"] = "SplitterNode"
+    mode: Literal["auto_diptych", "manual"] = "auto_diptych"
+    feathering: int = Field(default=15, ge=0, le=100, description="Растушевка (px)")
+    regions: list[RegionConfig] = Field(default_factory=list)
+
 # Polymorphic list of nodes using Pydantic's discriminator
 AnyNodeConfig = Annotated[
     Union[
@@ -39,7 +55,9 @@ AnyNodeConfig = Annotated[
         WhitePatchConfig, 
         ContrastStretchConfig, 
         AdaptiveGammaConfig, 
-        VibranceConfig
+        VibranceConfig,
+        RotationConfig,
+        SplitterConfig
     ],
     Field(discriminator='node_type')
 ]
@@ -56,7 +74,7 @@ class PipelineConfig(BaseModel):
     def to_yaml(self, file_path: str) -> None:
         """Saves the pipeline configuration to a YAML file."""
         with open(file_path, "w", encoding="utf-8") as f:
-            yaml.dump(self.model_dump(), f, allow_unicode=True, sort_keys=False)
+            yaml.dump(self.model_dump(mode='json'), f, allow_unicode=True, sort_keys=False)
 
     @classmethod
     def from_yaml(cls, file_path: str) -> "PipelineConfig":
@@ -64,3 +82,7 @@ class PipelineConfig(BaseModel):
         with open(file_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls.model_validate(data)
+
+# Resolve circular references
+PipelineConfig.model_rebuild()
+RegionConfig.model_rebuild()
