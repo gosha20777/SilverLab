@@ -13,12 +13,21 @@ class SplitterNode(BaseISPNode):
             print("Warning: SplitterNode requires a pipeline_engine to process sub-pipelines.")
             return image
             
-        if config.mode == "auto_diptych" and not config.regions:
+        bg_h, bg_w = image.shape[:2]
+
+        if config.mode == "auto_diptych":
             # Auto-detect!
-            rects = find_frame_rects(image)
+            rects_px = find_frame_rects(image)
+            rects = [(r[0]/bg_w, r[1]/bg_h, r[2]/bg_w, r[3]/bg_h) for r in rects_px]
             from src.models.isp_config import PipelineConfig
-            # Populate regions automatically with empty pipelines
-            config.regions = [RegionConfig(bbox=r, pipeline=PipelineConfig()) for r in rects]
+            
+            # Populate regions automatically if empty or missing
+            while len(config.regions) < len(rects):
+                config.regions.append(RegionConfig(bbox=(0.0,0.0,0.0,0.0), pipeline=PipelineConfig()))
+                
+            # Update bboxes
+            for i, r in enumerate(rects):
+                config.regions[i].bbox = r
             
         if not config.regions:
             return image
@@ -27,10 +36,11 @@ class SplitterNode(BaseISPNode):
         feather = config.feathering
         
         for region in config.regions:
-            x, y, w, h = region.bbox
+            nx, ny, nw, nh = region.bbox
+            x, y = int(nx * bg_w), int(ny * bg_h)
+            w, h = int(nw * bg_w), int(nh * bg_h)
             
             # Ensure bounds
-            bg_h, bg_w = output_image.shape[:2]
             x, y = max(0, x), max(0, y)
             w, h = min(w, bg_w - x), min(h, bg_h - y)
             

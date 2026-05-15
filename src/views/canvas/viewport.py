@@ -90,25 +90,61 @@ class CanvasViewport(QWidget):
         pixmap = numpy_to_qpixmap(display_array)
         
         self.scene.clear()
-        self.scene.addPixmap(pixmap)
+        pixmap_item = self.scene.addPixmap(pixmap)
         self.view.setSceneRect(self.scene.itemsBoundingRect())
+        self._draw_bboxes(container, pixmap.width(), pixmap.height())
 
     def render_proxy(self, container: FrameContainer) -> None:
         display_array = container.get_display_image(is_proxy=True)
         pixmap = numpy_to_qpixmap(display_array)
         
-        # When rendering proxy, we keep the original scene rect so it doesn't jump
         rect = self.scene.itemsBoundingRect() if self.scene.items() else None
         
         self.scene.clear()
         pixmap_item = self.scene.addPixmap(pixmap)
         
+        scale = 1.0
         if rect and not rect.isEmpty():
-            # Scale proxy pixmap visually to fill the same scene rect
-            # so the zoom level doesn't jump when swapping between full and proxy.
             scale_x = rect.width() / pixmap.width()
             scale_y = rect.height() / pixmap.height()
-            pixmap_item.setScale(max(scale_x, scale_y))
+            scale = max(scale_x, scale_y)
+            pixmap_item.setScale(scale)
             self.view.setSceneRect(rect)
         else:
             self.view.setSceneRect(self.scene.itemsBoundingRect())
+            
+        self._draw_bboxes(container, pixmap.width() * scale, pixmap.height() * scale)
+        
+    def _draw_bboxes(self, container: FrameContainer, w: float, h: float) -> None:
+        from src.views.canvas.widgets import ResizableRectItem
+        from PySide6.QtCore import QRectF
+        
+        config = container.pipeline_config
+        for node in config.nodes:
+            if node.node_type == "SplitterNode" and node.enabled:
+                for idx, region in enumerate(node.regions):
+                    nx, ny, nw, nh = region.bbox
+                    rx, ry = nx * w, ny * h
+                    rw, rh = nw * w, nh * h
+                    
+                    if rw > 0 and rh > 0:
+                        rect_item = ResizableRectItem(idx, QRectF(0, 0, rw, rh))
+                        rect_item.setPos(rx, ry)
+                        rect_item.signals.rect_changed.connect(
+                            lambda r_idx, new_rect, n=node, bw=w, bh=h: self._on_bbox_changed(r_idx, new_rect, n, bw, bh)
+                        )
+                        self.scene.addItem(rect_item)
+                        
+    def _on_bbox_changed(self, region_index: int, new_rect, splitter_node, bw: float, bh: float) -> None:
+        # new_rect is in scene coordinates (pixels)
+        # Convert back to normalized coordinates
+        nx = new_rect.x() / bw
+        ny = new_rect.y() / bh
+        nw = new_rect.width() / bw
+        nh = new_rect.height() / bh
+        
+        splitter_node.regions[region_index].bbox = (nx, ny, nw, nh)
+        splitter_node.mode = "manual"
+        
+        self.controller.pipeline_changed.emit()
+        self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)

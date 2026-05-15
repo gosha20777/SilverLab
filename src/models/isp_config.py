@@ -38,7 +38,7 @@ class RotationConfig(BaseNodeConfig):
 PipelineConfigRef = ForwardRef('PipelineConfig')
 
 class RegionConfig(BaseModel):
-    bbox: tuple[int, int, int, int] = (0, 0, 0, 0) # x, y, w, h
+    bbox: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0) # Normalized x, y, w, h
     pipeline: PipelineConfigRef
 
 class SplitterConfig(BaseNodeConfig):
