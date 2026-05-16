@@ -147,50 +147,53 @@ class InspectorPanel(QScrollArea):
         section.move_down_requested.connect(lambda: on_move(1))
         section.delete_requested.connect(on_delete)
 
-        # Sliders
-        if node_type == "ExposureNode":
-            self._create_slider(layout, "Сдвиг (EV)", -2.0, 2.0, node_config.value, node_config, "value", root_index)
-        elif node_type == "BlackClipNode":
-            self._create_slider(layout, "Срез (%)", 0.0, 2.0, node_config.clip_percent, node_config, "clip_percent", root_index)
-        elif node_type == "WhitePatchNode":
-            self._create_slider(layout, "Порог белого (%)", 95.0, 100.0, node_config.patch_percent, node_config, "patch_percent", root_index)
-        elif node_type == "AdaptiveGammaNode":
-            self._create_slider(layout, "Целевая яркость", 0.1, 0.9, node_config.target_lum, node_config, "target_lum", root_index)
-        elif node_type == "VibranceNode":
-            self._create_slider(layout, "Усилие", 0.0, 2.0, node_config.strength, node_config, "strength", root_index)
-        elif node_type == "ContrastStretchNode":
-            layout.addWidget(QLabel("Линейное растяжение гистограммы.\nНастроек нет."))
-        elif node_type == "RotationNode":
-            self._create_slider(layout, "Угол", -15.0, 15.0, node_config.angle, node_config, "angle", root_index)
-        elif node_type == "SplitterNode":
-            cb = QCheckBox("Авто-поворот")
-            cb.setChecked(node_config.apply_rotation)
-            cb.stateChanged.connect(lambda state, c=node_config: self._on_checkbox_changed(c, "apply_rotation", state))
-            layout.addWidget(cb)
+        # Render data-driven UI schema
+        ui_schema = []
+        if hasattr(node_config, "get_ui_schema"):
+            ui_schema = node_config.get_ui_schema()
             
-            self._create_slider(layout, "Целевой угол", -5.0, 5.0, node_config.target_angle, node_config, "target_angle", root_index)
-            self._create_slider(layout, "Допуск угла", 0.0, 2.0, node_config.angle_tolerance, node_config, "angle_tolerance", root_index)
-            self._create_slider(layout, "Текущий угол", -5.0, 5.0, node_config.current_angle, node_config, "current_angle", root_index)
-            self._create_slider(layout, "Растушевка", 0, 50, node_config.feathering, node_config, "feathering", root_index)
-            # Render spoilers for regions if they exist
-            if node_config.regions:
-                for r_idx, region in enumerate(node_config.regions):
-                    region_group = CollapsibleSection(f"Регион {r_idx + 1}", start_collapsed=True)
-                    region_layout = QVBoxLayout()
-                    self._render_node_list(region_layout, region.pipeline, is_root=False, root_index=root_index)
-                    
-                    # Add node button for this region
-                    add_btn = QPushButton(f"+ Добавить фильтр (Регион {r_idx + 1})")
-                    add_btn.clicked.connect(lambda _, p=region.pipeline, r=root_index: self._show_node_picker(p, r))
-                    region_layout.addWidget(add_btn)
-                    
-                    region_group.set_content_layout(region_layout)
-                    layout.addWidget(region_group)
-            else:
-                layout.addWidget(QLabel("Регионы будут созданы автоматически\nпри рендере."))
+        for element in ui_schema:
+            type_ = element.get("type")
+            if type_ == "slider":
+                self._create_slider(
+                    layout, 
+                    element["name"], 
+                    element["min"], 
+                    element["max"], 
+                    getattr(node_config, element["field"]), 
+                    node_config, 
+                    element["field"], 
+                    root_index
+                )
+            elif type_ == "checkbox":
+                cb = QCheckBox(element["name"])
+                cb.setChecked(getattr(node_config, element["field"]))
+                cb.stateChanged.connect(lambda state, c=node_config, f=element["field"]: self._on_checkbox_changed(c, f, state))
+                layout.addWidget(cb)
+            elif type_ == "label":
+                layout.addWidget(QLabel(element.get("text", "")))
+            elif type_ == "custom" and element.get("renderer") == "splitter_regions":
+                self._render_splitter_regions(layout, node_config, root_index)
             
         section.set_content_layout(layout)
         return section
+
+    def _render_splitter_regions(self, layout: QVBoxLayout, node_config, root_index: int) -> None:
+        if node_config.regions:
+            for r_idx, region in enumerate(node_config.regions):
+                region_group = CollapsibleSection(f"Регион {r_idx + 1}", start_collapsed=True)
+                region_layout = QVBoxLayout()
+                self._render_node_list(region_layout, region.pipeline, is_root=False, root_index=root_index)
+                
+                # Add node button for this region
+                add_btn = QPushButton(f"+ Добавить фильтр (Регион {r_idx + 1})")
+                add_btn.clicked.connect(lambda _, p=region.pipeline, r=root_index: self._show_node_picker(p, r))
+                region_layout.addWidget(add_btn)
+                
+                region_group.set_content_layout(region_layout)
+                layout.addWidget(region_group)
+        else:
+            layout.addWidget(QLabel("Регионы будут созданы автоматически\\nпри рендере."))
 
     def _show_node_picker(self, pipeline_config=None, root_index=0) -> None:
         if not self.controller.sequence.active_container:

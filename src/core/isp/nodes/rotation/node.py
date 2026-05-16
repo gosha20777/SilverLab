@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import math
 from src.core.isp.nodes.base_node import BaseISPNode
-from src.models.isp_config import RotationConfig
+from .config import RotationConfig
 
 class RotationNode(BaseISPNode):
     """

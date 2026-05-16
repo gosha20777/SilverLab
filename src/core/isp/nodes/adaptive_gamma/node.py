@@ -3,7 +3,7 @@ import cv2
 import math
 from pydantic import BaseModel
 from src.core.isp.nodes.base_node import BaseISPNode
-from src.models.isp_config import AdaptiveGammaConfig
+from .config import AdaptiveGammaConfig
 
 class AdaptiveGammaNode(BaseISPNode):
     """

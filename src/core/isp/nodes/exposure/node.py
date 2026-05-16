@@ -1,7 +1,7 @@
 import numpy as np
 from pydantic import BaseModel
 from src.core.isp.nodes.base_node import BaseISPNode
-from src.models.isp_config import ExposureConfig
+from .config import ExposureConfig
 
 
 class ExposureNode(BaseISPNode):

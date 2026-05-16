@@ -2,6 +2,8 @@ import sys
 from PySide6.QtWidgets import QApplication
 from src.controllers.main_controller import MainController
 from src.views.main_window import MainWindow
+from src.core.isp.plugin_manager import plugin_manager
+
 
 
 def main() -> None:
@@ -10,6 +12,9 @@ def main() -> None:
     Initializes the dependency injection container and starts the UI.
     """
     app = QApplication(sys.argv)
+    
+    # Load ISP Plugins
+    plugin_manager.load_plugins()
     
     # Initialize Core/Controller
     controller = MainController()

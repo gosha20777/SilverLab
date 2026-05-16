@@ -1,39 +1,18 @@
-from typing import Literal, Annotated, Union, ForwardRef
-from pydantic import BaseModel, Field
+from typing import Any, ForwardRef
+from pydantic import BaseModel, Field, field_validator
+import yaml
 
 class BaseNodeConfig(BaseModel):
     node_type: str
     enabled: bool = True
 
-class ExposureConfig(BaseNodeConfig):
-    node_type: Literal["ExposureNode"] = "ExposureNode"
-    value: float = Field(default=0.0, ge=-2.0, le=2.0, description="Экспозиция")
-
-class BlackClipConfig(BaseNodeConfig):
-    node_type: Literal["BlackClipNode"] = "BlackClipNode"
-    clip_percent: float = Field(default=0.1, ge=0.0, le=2.0, description="Отсечение черного (%)")
-
-class WhitePatchConfig(BaseNodeConfig):
-    node_type: Literal["WhitePatchNode"] = "WhitePatchNode"
-    patch_percent: float = Field(default=99.5, ge=95.0, le=100.0, description="Порог белого (%)")
-
-class ContrastStretchConfig(BaseNodeConfig):
-    node_type: Literal["ContrastStretchNode"] = "ContrastStretchNode"
-    # No extra parameters needed for simple linear stretch
-
-class AdaptiveGammaConfig(BaseNodeConfig):
-    node_type: Literal["AdaptiveGammaNode"] = "AdaptiveGammaNode"
-    target_lum: float = Field(default=0.5, ge=0.1, le=0.9, description="Целевая яркость")
-    min_gamma: float = Field(default=0.6, ge=0.1, le=1.0)
-    max_gamma: float = Field(default=1.5, ge=1.0, le=3.0)
-
-class VibranceConfig(BaseNodeConfig):
-    node_type: Literal["VibranceNode"] = "VibranceNode"
-    strength: float = Field(default=0.3, ge=0.0, le=2.0, description="Vibrance (Умная насыщенность)")
-
-class RotationConfig(BaseNodeConfig):
-    node_type: Literal["RotationNode"] = "RotationNode"
-    angle: float = Field(default=0.0, ge=-90.0, le=90.0, description="Угол поворота")
+    @classmethod
+    def get_ui_schema(cls) -> list[dict]:
+        """
+        Returns a list of dictionaries defining the UI for this node.
+        Example: [{"type": "slider", "name": "Экспозиция", "field": "value", "min": -2.0, "max": 2.0}]
+        """
+        return []
 
 PipelineConfigRef = ForwardRef('PipelineConfig')
 
@@ -41,40 +20,32 @@ class RegionConfig(BaseModel):
     bbox: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0) # Normalized x, y, w, h
     pipeline: PipelineConfigRef
 
-class SplitterConfig(BaseNodeConfig):
-    node_type: Literal["SplitterNode"] = "SplitterNode"
-    mode: Literal["auto_diptych", "manual"] = "auto_diptych"
-    feathering: int = Field(default=15, ge=0, le=100, description="Растушевка (px)")
-    regions: list[RegionConfig] = Field(default_factory=list)
-    apply_rotation: bool = True
-    target_angle: float = -0.7
-    angle_tolerance: float = 0.3
-    current_angle: float = 0.0
-    final_crop: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0) # Normalized x, y, w, h
-
-# Polymorphic list of nodes using Pydantic's discriminator
-AnyNodeConfig = Annotated[
-    Union[
-        ExposureConfig, 
-        BlackClipConfig, 
-        WhitePatchConfig, 
-        ContrastStretchConfig, 
-        AdaptiveGammaConfig, 
-        VibranceConfig,
-        RotationConfig,
-        SplitterConfig
-    ],
-    Field(discriminator='node_type')
-]
-
-import yaml
-
 class PipelineConfig(BaseModel):
     """
     Represents a full ISP Pipeline configuration (Preset).
     """
     name: str = "Default Profile"
-    nodes: list[AnyNodeConfig] = Field(default_factory=list)
+    nodes: list[Any] = Field(default_factory=list)
+
+    @field_validator('nodes', mode='before')
+    @classmethod
+    def parse_nodes(cls, v: Any) -> Any:
+        from src.core.isp.plugin_manager import plugin_manager
+        if not isinstance(v, list):
+            return v
+            
+        parsed_nodes = []
+        for n in v:
+            if isinstance(n, dict) and 'node_type' in n:
+                config_cls = plugin_manager.get_config_class(n['node_type'])
+                if config_cls:
+                    parsed_nodes.append(config_cls(**n))
+                else:
+                    print(f"Warning: Unknown node type {n['node_type']}")
+                    parsed_nodes.append(n)
+            else:
+                parsed_nodes.append(n)
+        return parsed_nodes
 
     def to_yaml(self, file_path: str) -> None:
         """Saves the pipeline configuration to a YAML file."""

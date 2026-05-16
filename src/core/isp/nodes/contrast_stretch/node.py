@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from pydantic import BaseModel
 from src.core.isp.nodes.base_node import BaseISPNode
-from src.models.isp_config import ContrastStretchConfig
+from .config import ContrastStretchConfig
 
 class ContrastStretchNode(BaseISPNode):
     """

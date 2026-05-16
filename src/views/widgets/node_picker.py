@@ -1,9 +1,5 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout
-from src.models.isp_config import (
-    ExposureConfig, BlackClipConfig, WhitePatchConfig, 
-    ContrastStretchConfig, AdaptiveGammaConfig, VibranceConfig,
-    RotationConfig, SplitterConfig
-)
+from src.core.isp.plugin_manager import plugin_manager
 
 class NodePickerDialog(QDialog):
     """
@@ -18,16 +14,17 @@ class NodePickerDialog(QDialog):
         
         self.list_widget = QListWidget()
         
-        self.available_nodes = [
-            ("Экспозиция (Exposure)", ExposureConfig),
-            ("Отсечение черного (Black Clip)", BlackClipConfig),
-            ("Баланс Белого (White Patch)", WhitePatchConfig),
-            ("Контраст (Linear Stretch)", ContrastStretchConfig),
-            ("Средние тона (Adaptive Gamma)", AdaptiveGammaConfig),
-            ("Насыщенность (Vibrance)", VibranceConfig),
-            ("Поворот (Rotation)", RotationConfig),
-            ("Диптих (Splitter)", SplitterConfig)
-        ]
+        self.available_nodes = []
+        for node_type in plugin_manager.get_all_node_types():
+            config_cls = plugin_manager.get_config_class(node_type)
+            if config_cls:
+                display_name = node_type
+                if hasattr(config_cls, 'get_ui_schema'):
+                    ui_schema = config_cls.get_ui_schema()
+                    if ui_schema and len(ui_schema) > 0 and 'name' in ui_schema[0]:
+                        display_name = f"{ui_schema[0]['name']} ({node_type})"
+                self.available_nodes.append((display_name, config_cls))
+                
         
         for name, _ in self.available_nodes:
             self.list_widget.addItem(name)

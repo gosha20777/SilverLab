@@ -4,7 +4,8 @@ import math
 from typing import Optional, Tuple, List
 
 from src.core.isp.nodes.base_node import BaseISPNode
-from src.models.isp_config import SplitterConfig, RegionConfig, PipelineConfig
+from src.models.isp_config import RegionConfig, PipelineConfig
+from .config import SplitterConfig
 
 
 class SplitterNode(BaseISPNode):

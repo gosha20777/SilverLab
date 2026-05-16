@@ -1,25 +1,6 @@
 import numpy as np
 from src.models.frame_container import FrameContainer
-from src.core.isp.nodes.exposure import ExposureNode
-from src.core.isp.nodes.black_clip import BlackClipNode
-from src.core.isp.nodes.white_patch import WhitePatchNode
-from src.core.isp.nodes.contrast_stretch import ContrastStretchNode
-from src.core.isp.nodes.adaptive_gamma import AdaptiveGammaNode
-from src.core.isp.nodes.vibrance import VibranceNode
-from src.core.isp.nodes.geometry import RotationNode
-from src.core.isp.nodes.splitter import SplitterNode
-
-# Mapping from Pydantic config node_type to actual implementation class
-NODE_REGISTRY = {
-    "ExposureNode": ExposureNode,
-    "BlackClipNode": BlackClipNode,
-    "WhitePatchNode": WhitePatchNode,
-    "ContrastStretchNode": ContrastStretchNode,
-    "AdaptiveGammaNode": AdaptiveGammaNode,
-    "VibranceNode": VibranceNode,
-    "RotationNode": RotationNode,
-    "SplitterNode": SplitterNode,
-}
+from src.core.isp.plugin_manager import plugin_manager
 
 class ISPPipeline:
     """
@@ -27,7 +8,7 @@ class ISPPipeline:
     """
     def __init__(self) -> None:
         # Instantiate all stateless nodes once
-        self.node_instances = {name: cls() for name, cls in NODE_REGISTRY.items()}
+        self.node_instances = {name: cls() for name, cls in plugin_manager.nodes.items()}
         self.registry = self.node_instances
 
     def run_pipeline_on_image(self, image: np.ndarray, pipeline_config, is_export: bool = False) -> np.ndarray:
