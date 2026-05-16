@@ -34,7 +34,7 @@ class Worker(QRunnable):
         try:
             result = self.fn(*self.args, **self.kwargs)
         except Exception:
-            exctype, value = sys.exc_info()
+            exctype, value, tb = sys.exc_info()
             if exctype and value:
                 self.signals.error.emit((exctype, value, traceback.format_exc()))
         else:

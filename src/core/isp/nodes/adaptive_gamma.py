@@ -23,4 +23,4 @@ class AdaptiveGammaNode(BaseISPNode):
         gamma = np.clip(gamma, config.min_gamma, config.max_gamma)
         
         img_gamma = np.power(image, gamma)
-        return np.clip(img_gamma, 0.0, 1.0)
+        return np.clip(img_gamma, 0.0, 1.0).astype(image.dtype)

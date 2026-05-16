@@ -30,7 +30,7 @@ class ISPPipeline:
         self.node_instances = {name: cls() for name, cls in NODE_REGISTRY.items()}
         self.registry = self.node_instances
 
-    def run_pipeline_on_image(self, image: np.ndarray, pipeline_config) -> np.ndarray:
+    def run_pipeline_on_image(self, image: np.ndarray, pipeline_config, is_export: bool = False) -> np.ndarray:
         """
         Executes a nested sub-pipeline without proxy caching.
         """
@@ -43,17 +43,18 @@ class ISPPipeline:
             if node_type in self.registry:
                 node = self.registry[node_type]
                 try:
-                    current_image = node.process(current_image, node_conf, pipeline_engine=self)
+                    current_image = node.process(current_image, node_conf, pipeline_engine=self, is_export=is_export)
                 except Exception as e:
                     print(f"Error processing nested node {node_type}: {e}")
         return current_image
 
-    def process_container(self, container: FrameContainer, is_proxy: bool = False, start_node_index: int = 0) -> None:
+    def process_container(self, container: FrameContainer, is_proxy: bool = False, start_node_index: int = 0, is_export: bool = False) -> None:
         """
         Executes the ISP pipeline on the container's image.
         Supports proxy processing and intermediate node caching for fast real-time UI response.
         """
-        nodes_config = container.pipeline_config.nodes
+        # Create a shallow copy to prevent IndexError if the UI thread modifies the list mid-flight
+        nodes_config = list(container.pipeline_config.nodes)
         
         if not nodes_config:
             # Empty pipeline
@@ -94,7 +95,7 @@ class ISPPipeline:
             if node_type in self.registry:
                 node = self.registry[node_type]
                 try:
-                    current_image = node.process(current_image, node_conf, pipeline_engine=self)
+                    current_image = node.process(current_image, node_conf, pipeline_engine=self, is_export=is_export)
                 except Exception as e:
                     print(f"Error processing node {node_type}: {e}")
                     

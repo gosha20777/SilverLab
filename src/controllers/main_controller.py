@@ -110,7 +110,13 @@ class MainController(QObject):
         self.current_preset = current_config.model_copy(deep=True) # Update global preset logic
         
         for item in self.sequence.items:
-            item.pipeline_config = current_config.model_copy(deep=True)
+            new_config = current_config.model_copy(deep=True)
+            for node in new_config.nodes:
+                if getattr(node, "node_type", "") == "SplitterNode":
+                    node.mode = "auto_diptych"
+                    node.regions = []
+                    node.current_angle = 0.0
+            item.pipeline_config = new_config
             
         self.status_message_changed.emit(f"Пресет применен ко всем {len(self.sequence.items)} файлам.")
 
@@ -145,6 +151,19 @@ class MainController(QObject):
     def save_current_image(self, save_path: str) -> bool:
         if not self.sequence.active_container: return False
         display_img = self.sequence.active_container.get_display_image(is_proxy=False)
+        
+        # Apply final crop if SplitterNode is active
+        config = self.sequence.active_container.pipeline_config
+        for node in config.nodes:
+            if getattr(node, "node_type", "") == "SplitterNode" and getattr(node, "enabled", True):
+                fx, fy, fw, fh = getattr(node, 'final_crop', (0.0, 0.0, 1.0, 1.0))
+                bg_h, bg_w = display_img.shape[:2]
+                l, t = max(0, int(fx * bg_w)), max(0, int(fy * bg_h))
+                r, b = min(bg_w, int((fx + fw) * bg_w)), min(bg_h, int((fy + fh) * bg_h))
+                if l < r and t < b:
+                    display_img = display_img[t:b, l:r]
+                break
+                
         return save_image(display_img, save_path)
 
     def update_node_config_interactive(self, index: int, **kwargs) -> None:

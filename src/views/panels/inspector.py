@@ -225,6 +225,10 @@ class InspectorPanel(QScrollArea):
             real_val = min_val + (val / 100.0) * (max_val - min_val)
             label.setText(f"{name}: {real_val:.2f}")
             setattr(node_config, field_name, real_val)
+            
+            if field_name == "current_angle" and hasattr(node_config, "mode"):
+                node_config.mode = "manual"
+                
             self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=True)
             
         def on_release():
