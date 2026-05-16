@@ -1,0 +1,21 @@
+from typing import List
+from pydantic import BaseModel, Field
+from .enums import UIType, TagType, GroupType
+
+class UIElementConfig(BaseModel):
+    type: UIType
+    name: str = ""
+    field: str = ""
+    min: float = 0.0
+    max: float = 0.0
+    text: str = ""
+    renderer: str = ""
+
+class NodeMetadata(BaseModel):
+    title: str
+    description_short: str = ""
+    description_long: str = ""
+    author: str = "SilverLab Team"
+    url: str = ""
+    tags: List[TagType] = Field(default_factory=list)
+    group: GroupType = GroupType.MISC

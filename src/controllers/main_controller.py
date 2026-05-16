@@ -114,7 +114,6 @@ class MainController(QObject):
             for node in new_config.nodes:
                 if getattr(node, "node_type", "") == "SplitterNode":
                     node.mode = "auto_diptych"
-                    node.regions = []
                     node.current_angle = 0.0
             item.pipeline_config = new_config
             

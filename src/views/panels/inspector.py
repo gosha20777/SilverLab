@@ -107,83 +107,9 @@ class InspectorPanel(QScrollArea):
             section = self._build_node_ui(node_conf, pipeline_config, i, actual_root_idx)
             layout.addWidget(section)
 
-    def _build_node_ui(self, node_config, parent_pipeline, local_index: int, root_index: int) -> CollapsibleSection:
-        from src.models.isp_config import UIType
-        
-        info = node_config.get_node_info()
-        section = CollapsibleSection(info.title, start_collapsed=False)
-        section.set_enabled_state(node_config.enabled)
-        layout = QVBoxLayout()
-        
-        # Connect Controls
-        def on_toggle(state):
-            node_config.enabled = state
-            self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=False)
-            
-        def on_delete():
-            parent_pipeline.nodes.pop(local_index)
-            self.controller.pipeline_changed.emit()
-            self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=False)
-            
-        def on_move(direction):
-            new_idx = local_index + direction
-            if 0 <= new_idx < len(parent_pipeline.nodes):
-                nodes = parent_pipeline.nodes
-                nodes[local_index], nodes[new_idx] = nodes[new_idx], nodes[local_index]
-                self.controller.pipeline_changed.emit()
-                self.controller._trigger_pipeline(start_node_index=root_index if root_index <= new_idx else new_idx, is_interactive=False)
-
-        section.enabled_changed.connect(on_toggle)
-        section.move_up_requested.connect(lambda: on_move(-1))
-        section.move_down_requested.connect(lambda: on_move(1))
-        section.delete_requested.connect(on_delete)
-
-        # Render strongly typed data-driven UI schema
-        ui_schema = []
-        if hasattr(node_config, "get_ui_schema"):
-            ui_schema = node_config.get_ui_schema()
-            
-        for element in ui_schema:
-            if element.type == UIType.SLIDER:
-                self._create_slider(
-                    layout, 
-                    element.name, 
-                    element.min, 
-                    element.max, 
-                    getattr(node_config, element.field), 
-                    node_config, 
-                    element.field, 
-                    root_index
-                )
-            elif element.type == UIType.CHECKBOX:
-                cb = QCheckBox(element.name)
-                cb.setChecked(getattr(node_config, element.field))
-                cb.stateChanged.connect(lambda state, c=node_config, f=element.field: self._on_checkbox_changed(c, f, state))
-                layout.addWidget(cb)
-            elif element.type == UIType.LABEL:
-                layout.addWidget(QLabel(element.text))
-            elif element.type == UIType.CUSTOM and element.renderer == "splitter_regions":
-                self._render_splitter_regions(layout, node_config, root_index)
-            
-        section.set_content_layout(layout)
-        return section
-
-    def _render_splitter_regions(self, layout: QVBoxLayout, node_config, root_index: int) -> None:
-        if node_config.regions:
-            for r_idx, region in enumerate(node_config.regions):
-                region_group = CollapsibleSection(f"Регион {r_idx + 1}", start_collapsed=True)
-                region_layout = QVBoxLayout()
-                self._render_node_list(region_layout, region.pipeline, is_root=False, root_index=root_index)
-                
-                # Add node button for this region
-                add_btn = QPushButton(f"+ Добавить фильтр (Регион {r_idx + 1})")
-                add_btn.clicked.connect(lambda _, p=region.pipeline, r=root_index: self._show_node_picker(p, r))
-                region_layout.addWidget(add_btn)
-                
-                region_group.set_content_layout(region_layout)
-                layout.addWidget(region_group)
-        else:
-            layout.addWidget(QLabel("Регионы будут созданы автоматически\\nпри рендере."))
+    def _build_node_ui(self, node_config, parent_pipeline, local_index: int, root_index: int):
+        from src.views.widgets.node_settings_section import NodeSettingsSection
+        return NodeSettingsSection(node_config, parent_pipeline, local_index, root_index, self)
 
     def _show_node_picker(self, pipeline_config=None, root_index=0) -> None:
         if not self.controller.sequence.active_container:
@@ -199,37 +125,3 @@ class InspectorPanel(QScrollArea):
                     self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=False)
                 else:
                     self.controller.add_node(new_config)
-
-    def _create_slider(self, layout, name: str, min_val: float, max_val: float, current: float, node_config, field_name: str, root_index: int):
-        label = QLabel(f"{name}: {current:.2f}")
-        layout.addWidget(label)
-        
-        slider = QSlider(Qt.Horizontal)
-        slider.setMinimum(0)
-        slider.setMaximum(100)
-        
-        initial_pos = int(((current - min_val) / (max_val - min_val)) * 100)
-        # Prevent division by zero if max_val == min_val
-        if max_val == min_val: initial_pos = 0
-        slider.setValue(initial_pos)
-        layout.addWidget(slider)
-        
-        def on_change(val):
-            real_val = min_val + (val / 100.0) * (max_val - min_val)
-            label.setText(f"{name}: {real_val:.2f}")
-            setattr(node_config, field_name, real_val)
-            
-            if field_name == "current_angle" and hasattr(node_config, "mode"):
-                node_config.mode = "manual"
-                
-            self.controller._trigger_pipeline(start_node_index=root_index, is_interactive=True)
-            
-        def on_release():
-            self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)
-
-        slider.valueChanged.connect(on_change)
-        slider.sliderReleased.connect(on_release)
-
-    def _on_checkbox_changed(self, node_config, field_name: str, state: int):
-        setattr(node_config, field_name, state == Qt.Checked)
-        self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)

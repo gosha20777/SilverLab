@@ -51,7 +51,8 @@ class SplitterNode(BaseISPNode):
         feather = config.feathering
 
         for region in config.regions:
-            self._process_region(output_image, working_image, region, pipeline_engine, feather, is_export)
+            if getattr(region, "enabled", True):
+                self._process_region(output_image, working_image, region, pipeline_engine, feather, is_export)
 
         # 5. Final Crop (only applied when exporting)
         if is_export:
