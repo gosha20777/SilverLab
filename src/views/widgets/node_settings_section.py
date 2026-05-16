@@ -61,8 +61,33 @@ class NodeSettingsSection(CollapsibleSection):
                 self._create_checkbox(layout, element)
             elif element.type == UIType.LABEL:
                 layout.addWidget(QLabel(element.text))
+            elif element.type == UIType.COMBOBOX:
+                self._create_combobox(layout, element)
             elif element.type == UIType.CUSTOM and element.renderer == "splitter_regions":
                 self._render_splitter_regions(layout)
+
+    def _create_combobox(self, layout, element):
+        from PySide6.QtWidgets import QComboBox, QHBoxLayout
+        
+        container = QHBoxLayout()
+        container.addWidget(QLabel(element.name))
+        
+        cb = QComboBox()
+        current_val = getattr(self.node_config, element.field)
+        
+        for i, (label, val) in enumerate(element.options):
+            cb.addItem(label, userData=val)
+            if val == current_val:
+                cb.setCurrentIndex(i)
+                
+        def on_change(idx):
+            val = cb.itemData(idx)
+            setattr(self.node_config, element.field, val)
+            self.controller._trigger_pipeline(start_node_index=self.root_index, is_interactive=False)
+            
+        cb.currentIndexChanged.connect(on_change)
+        container.addWidget(cb)
+        layout.addLayout(container)
 
     def _create_slider(self, layout, element):
         name = element.name

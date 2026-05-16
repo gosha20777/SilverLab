@@ -30,6 +30,9 @@ class ResizableRectItem(QGraphicsRectItem):
         self.is_final_crop = False
         self.is_editable = False
         
+        self.aspect_ratio_str = "free"
+        self.grid_type = "none"
+        
     def set_edit_mode(self, editable: bool):
         self.is_editable = editable
         if self.is_final_crop:
@@ -160,6 +163,41 @@ class ResizableRectItem(QGraphicsRectItem):
             elif self.resize_dir == 'b':
                 rect.setBottom(pos.y())
                 
+            if self.aspect_ratio_str and self.aspect_ratio_str != "free":
+                w_r, h_r = map(float, self.aspect_ratio_str.split(':'))
+                target_ratio = w_r / h_r
+                
+                # We enforce aspect ratio by adjusting the opposite dimension
+                new_w, new_h = rect.width(), rect.height()
+                
+                if self.resize_dir in ('l', 'r', 'tl', 'tr', 'bl', 'br'):
+                    # Width drives height
+                    new_h = new_w / target_ratio
+                else:
+                    # Height drives width
+                    new_w = new_h * target_ratio
+                    
+                if self.resize_dir == 'tl':
+                    rect.setTop(rect.bottom() - new_h)
+                elif self.resize_dir == 'tr':
+                    rect.setTop(rect.bottom() - new_h)
+                elif self.resize_dir == 'bl':
+                    rect.setBottom(rect.top() + new_h)
+                elif self.resize_dir == 'br':
+                    rect.setBottom(rect.top() + new_h)
+                elif self.resize_dir == 'l':
+                    rect.setTop(rect.center().y() - new_h/2)
+                    rect.setBottom(rect.center().y() + new_h/2)
+                elif self.resize_dir == 'r':
+                    rect.setTop(rect.center().y() - new_h/2)
+                    rect.setBottom(rect.center().y() + new_h/2)
+                elif self.resize_dir == 't':
+                    rect.setLeft(rect.center().x() - new_w/2)
+                    rect.setRight(rect.center().x() + new_w/2)
+                elif self.resize_dir == 'b':
+                    rect.setLeft(rect.center().x() - new_w/2)
+                    rect.setRight(rect.center().x() + new_w/2)
+                
             self.setRect(rect.normalized())
         else:
             super().mouseMoveEvent(event)
@@ -181,3 +219,25 @@ class ResizableRectItem(QGraphicsRectItem):
         # Calculate world coordinates
         mapped_rect = self.mapRectToScene(self.rect())
         self.signals.rect_changed.emit(self.region_index, mapped_rect)
+
+    def paint(self, painter, option, widget):
+        super().paint(painter, option, widget)
+        if self.resizing and getattr(self, 'grid_type', 'none') != 'none':
+            rect = self.rect()
+            painter.setPen(QPen(QColor(255, 255, 255, 200), max(1.0, rect.width() * 0.002), Qt.DashLine))
+            
+            if self.grid_type == "rule_of_thirds":
+                x1, x2 = rect.left() + rect.width()/3, rect.left() + 2*rect.width()/3
+                y1, y2 = rect.top() + rect.height()/3, rect.top() + 2*rect.height()/3
+                painter.drawLine(x1, rect.top(), x1, rect.bottom())
+                painter.drawLine(x2, rect.top(), x2, rect.bottom())
+                painter.drawLine(rect.left(), y1, rect.right(), y1)
+                painter.drawLine(rect.left(), y2, rect.right(), y2)
+                
+            elif self.grid_type == "golden_ratio":
+                x1, x2 = rect.left() + rect.width()*0.382, rect.left() + rect.width()*0.618
+                y1, y2 = rect.top() + rect.height()*0.382, rect.top() + rect.height()*0.618
+                painter.drawLine(x1, rect.top(), x1, rect.bottom())
+                painter.drawLine(x2, rect.top(), x2, rect.bottom())
+                painter.drawLine(rect.left(), y1, rect.right(), y1)
+                painter.drawLine(rect.left(), y2, rect.right(), y2)

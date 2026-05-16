@@ -98,7 +98,7 @@ class SplitterNode(BaseISPNode):
         top, bottom = min(yl, yr), max(yl + hl, yr + hr)
         left, right = xl, xr + wr
 
-        # Apply 2% margins
+        # Apply 2% margins (force to edges unless regions exceed them)
         if top > bg_h * 0.04:
             top = int(bg_h * 0.02)
         if bottom < bg_h * 0.96:
@@ -122,8 +122,8 @@ class SplitterNode(BaseISPNode):
         """Extracts, processes, and blends a single region."""
         bg_h, bg_w = working_image.shape[:2]
         nx, ny, nw, nh = region.bbox
-        x, y = int(nx * bg_w), int(ny * bg_h)
-        w, h = int(nw * bg_w), int(nh * bg_h)
+        x, y = int(round(nx * bg_w)), int(round(ny * bg_h))
+        w, h = int(round(nw * bg_w)), int(round(nh * bg_h))
 
         x, y = max(0, x), max(0, y)
         w, h = min(w, bg_w - x), min(h, bg_h - y)
@@ -139,8 +139,8 @@ class SplitterNode(BaseISPNode):
         """Applies the final crop coordinates to the image."""
         bg_h, bg_w = image.shape[:2]
         fx, fy, fw, fh = config.final_crop
-        l, t = max(0, int(fx * bg_w)), max(0, int(fy * bg_h))
-        r, b = min(bg_w, int((fx + fw) * bg_w)), min(bg_h, int((fy + fh) * bg_h))
+        l, t = max(0, int(round(fx * bg_w))), max(0, int(round(fy * bg_h)))
+        r, b = min(bg_w, int(round((fx + fw) * bg_w))), min(bg_h, int(round((fy + fh) * bg_h)))
         
         if l < r and t < b:
             return image[t:b, l:r]

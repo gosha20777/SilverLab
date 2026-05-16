@@ -151,14 +151,22 @@ class MainController(QObject):
         if not self.sequence.active_container: return False
         display_img = self.sequence.active_container.get_display_image(is_proxy=False)
         
-        # Apply final crop if SplitterNode is active
+        # Apply final crop if necessary
         config = self.sequence.active_container.pipeline_config
         for node in config.nodes:
             if getattr(node, "node_type", "") == "SplitterNode" and getattr(node, "enabled", True):
                 fx, fy, fw, fh = getattr(node, 'final_crop', (0.0, 0.0, 1.0, 1.0))
                 bg_h, bg_w = display_img.shape[:2]
-                l, t = max(0, int(fx * bg_w)), max(0, int(fy * bg_h))
-                r, b = min(bg_w, int((fx + fw) * bg_w)), min(bg_h, int((fy + fh) * bg_h))
+                l, t = max(0, int(round(fx * bg_w))), max(0, int(round(fy * bg_h)))
+                r, b = min(bg_w, int(round((fx + fw) * bg_w))), min(bg_h, int(round((fy + fh) * bg_h)))
+                if l < r and t < b:
+                    display_img = display_img[t:b, l:r]
+                break
+            elif getattr(node, "node_type", "") == "CropNode" and getattr(node, "enabled", True):
+                nx, ny, nw, nh = getattr(node, 'bbox', (0.0, 0.0, 1.0, 1.0))
+                bg_h, bg_w = display_img.shape[:2]
+                l, t = max(0, int(round(nx * bg_w))), max(0, int(round(ny * bg_h)))
+                r, b = min(bg_w, int(round((nx + nw) * bg_w))), min(bg_h, int(round((ny + nh) * bg_h)))
                 if l < r and t < b:
                     display_img = display_img[t:b, l:r]
                 break

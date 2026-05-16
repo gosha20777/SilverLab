@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 from pydantic import BaseModel, Field
 from .enums import UIType, TagType, GroupType
 
@@ -10,6 +10,7 @@ class UIElementConfig(BaseModel):
     max: float = 0.0
     text: str = ""
     renderer: str = ""
+    options: List[Tuple[str, str]] = Field(default_factory=list)
 
 class NodeMetadata(BaseModel):
     title: str

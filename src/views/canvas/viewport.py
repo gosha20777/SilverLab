@@ -133,7 +133,9 @@ class CanvasViewport(QWidget):
         
         config = container.pipeline_config
         for node in config.nodes:
-            if node.node_type == "SplitterNode" and node.enabled:
+            if not node.enabled: continue
+            
+            if node.node_type == "SplitterNode":
                 for idx, region in enumerate(node.regions):
                     nx, ny, nw, nh = region.bbox
                     rx, ry = nx * w, ny * h
@@ -164,21 +166,41 @@ class CanvasViewport(QWidget):
                         lambda r_idx, new_rect, n=node, bw=w, bh=h: self._on_bbox_changed(r_idx, new_rect, n, bw, bh)
                     )
                     self.scene.addItem(rect_item)
+                    
+            elif node.node_type == "CropNode":
+                nx, ny, nw, nh = node.bbox
+                rx, ry = nx * w, ny * h
+                rw, rh = nw * w, nh * h
+                
+                if rw > 0 and rh > 0:
+                    rect_item = ResizableRectItem(-2, QRectF(0, 0, rw, rh))
+                    rect_item.aspect_ratio_str = getattr(node, "aspect_ratio", "free")
+                    rect_item.grid_type = getattr(node, "grid_type", "none")
+                    rect_item.setPos(rx, ry)
+                    rect_item.set_edit_mode(is_editable)
+                    rect_item.setZValue(2)
+                    rect_item.signals.rect_changed.connect(
+                        lambda r_idx, new_rect, n=node, bw=w, bh=h: self._on_bbox_changed(r_idx, new_rect, n, bw, bh)
+                    )
+                    self.scene.addItem(rect_item)
                         
-    def _on_bbox_changed(self, region_index: int, new_rect, splitter_node, bw: float, bh: float) -> None:
+    def _on_bbox_changed(self, region_index: int, new_rect, target_node, bw: float, bh: float) -> None:
         nx = new_rect.x() / bw
         ny = new_rect.y() / bh
         nw = new_rect.width() / bw
         nh = new_rect.height() / bh
         
-        if region_index == -1:
-            splitter_node.final_crop = (nx, ny, nw, nh)
+        if region_index == -2:
+            target_node.bbox = (nx, ny, nw, nh)
+        elif region_index == -1:
+            target_node.final_crop = (nx, ny, nw, nh)
+            target_node.mode = "manual"
         else:
-            splitter_node.regions[region_index].bbox = (nx, ny, nw, nh)
+            target_node.regions[region_index].bbox = (nx, ny, nw, nh)
             # Re-calculate final crop based on new regions
-            if len(splitter_node.regions) == 2:
-                r1 = splitter_node.regions[0].bbox
-                r2 = splitter_node.regions[1].bbox
+            if len(target_node.regions) == 2:
+                r1 = target_node.regions[0].bbox
+                r2 = target_node.regions[1].bbox
                 top = min(r1[1], r2[1])
                 bottom = max(r1[1] + r1[3], r2[1] + r2[3])
                 left = min(r1[0], r2[0])
@@ -190,9 +212,8 @@ class CanvasViewport(QWidget):
                 if left > 0.04: left = 0.02
                 if right < 0.96: right = 0.98
                 
-                splitter_node.final_crop = (left, top, right - left, bottom - top)
-            
-        splitter_node.mode = "manual"
+                target_node.final_crop = (left, top, right - left, bottom - top)
+            target_node.mode = "manual"
         
         self.controller.pipeline_changed.emit()
         self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)

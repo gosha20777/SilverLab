@@ -4,6 +4,7 @@ class UIType(str, Enum):
     SLIDER = 'slider'
     CHECKBOX = 'checkbox'
     LABEL = 'label'
+    COMBOBOX = 'combobox'
     CUSTOM = 'custom'
 
 class GroupType(str, Enum):
