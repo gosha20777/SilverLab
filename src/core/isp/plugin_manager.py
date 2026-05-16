@@ -51,4 +51,3 @@ class PluginManager:
         return list(self.nodes.keys())
 
 plugin_manager = PluginManager()
-# We will explicitly call load_plugins() from main.py or pipeline.py after models are loaded.

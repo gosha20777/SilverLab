@@ -11,3 +11,15 @@ class WhitePatchConfig(BaseNodeConfig):
         return [
             {"type": "slider", "name": "Порог белого (%)", "field": "patch_percent", "min": 95.0, "max": 100.0}
         ]
+
+    @classmethod
+    def get_node_info(cls) -> dict:
+        return {
+            "title": "Баланс Белого (White Patch)",
+            "description_short": "Автоматический баланс белого по светлым участкам.",
+            "description_long": "Использует алгоритм White Patch (Идеальный отражатель). Находит самые светлые пиксели (верхние 0.5-5%) и выравнивает цветовые каналы так, чтобы этот участок стал нейтрально-белым. Отлично работает для устранения общих цветовых сдвигов от лампы сканера.",
+            "author": "Гоша",
+            "url": "https://en.wikipedia.org/wiki/Color_balance",
+            "tags": ["Цвет", "Баланс белого", "ББ", "Цветокоррекция"],
+            "group": "Цветокоррекция"
+        }

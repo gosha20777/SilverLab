@@ -14,6 +14,21 @@ class BaseNodeConfig(BaseModel):
         """
         return []
 
+    @classmethod
+    def get_node_info(cls) -> dict:
+        """
+        Returns metadata about the node for the UI Picker.
+        """
+        return {
+            "title": cls.__name__,
+            "description_short": "",
+            "description_long": "",
+            "author": "SilverLab Team",
+            "url": "",
+            "tags": [],
+            "group": "Разное"
+        }
+
 PipelineConfigRef = ForwardRef('PipelineConfig')
 
 class RegionConfig(BaseModel):

@@ -11,3 +11,15 @@ class RotationConfig(BaseNodeConfig):
         return [
             {"type": "slider", "name": "Угол поворота", "field": "angle", "min": -15.0, "max": 15.0}
         ]
+
+    @classmethod
+    def get_node_info(cls) -> dict:
+        return {
+            "title": "Свободный поворот (Rotation)",
+            "description_short": "Поворот изображения на заданный угол.",
+            "description_long": "Позволяет вращать холст на угол от -90 до +90 градусов вокруг центра кадра. Используется интерполяция INTER_LINEAR для минимизации потерь качества.",
+            "author": "Гоша",
+            "url": "",
+            "tags": ["Геометрия", "Поворот", "Трансформация"],
+            "group": "Геометрия и Кадрирование"
+        }
