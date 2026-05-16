@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from pydantic import BaseModel, Field
 from .enums import UIType, TagType, GroupType
 
@@ -11,6 +11,7 @@ class UIElementConfig(BaseModel):
     text: str = ""
     renderer: str = ""
     options: List[Tuple[str, str]] = Field(default_factory=list)
+    action_id: Optional[str] = None
 
 class NodeMetadata(BaseModel):
     title: str

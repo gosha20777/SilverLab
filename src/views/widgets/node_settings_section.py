@@ -63,6 +63,8 @@ class NodeSettingsSection(CollapsibleSection):
                 layout.addWidget(QLabel(element.text))
             elif element.type == UIType.COMBOBOX:
                 self._create_combobox(layout, element)
+            elif element.type == UIType.BUTTON:
+                self._create_button(layout, element)
             elif element.type == UIType.CUSTOM and element.renderer == "splitter_regions":
                 self._render_splitter_regions(layout)
 
@@ -88,6 +90,17 @@ class NodeSettingsSection(CollapsibleSection):
         cb.currentIndexChanged.connect(on_change)
         container.addWidget(cb)
         layout.addLayout(container)
+
+    def _create_button(self, layout, element):
+        from PySide6.QtWidgets import QPushButton
+        btn = QPushButton(element.name)
+        
+        def on_click():
+            if element.action_id and hasattr(self.controller, 'handle_node_action'):
+                self.controller.handle_node_action(self.node_config, element.action_id)
+                
+        btn.clicked.connect(on_click)
+        layout.addWidget(btn)
 
     def _create_slider(self, layout, element):
         name = element.name
@@ -129,7 +142,7 @@ class NodeSettingsSection(CollapsibleSection):
         cb.setChecked(getattr(self.node_config, element.field))
         
         def on_checkbox_changed(state):
-            setattr(self.node_config, element.field, state == Qt.Checked)
+            setattr(self.node_config, element.field, cb.isChecked())
             self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)
             
         cb.stateChanged.connect(on_checkbox_changed)

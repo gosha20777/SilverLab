@@ -54,6 +54,66 @@ class CanvasViewport(QWidget):
             
         self.view.scale(zoom_factor, zoom_factor)
         
+        # Event filter for ruler tool
+        self.view.viewport().installEventFilter(self)
+        self.ruler_line_item = None
+        self.ruler_start = None
+
+    def eventFilter(self, source, event) -> bool:
+        from PySide6.QtCore import QEvent, Qt
+        from PySide6.QtGui import QPen, QColor, QBrush
+        import math
+        
+        if source == self.view.viewport() and getattr(self, 'current_tool', '') == 'straighten':
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                scene_pos = self.view.mapToScene(event.pos())
+                self.ruler_start = scene_pos
+                pen = QPen(QColor(0, 255, 255), 3, Qt.SolidLine)
+                self.ruler_line_item = self.scene.addLine(scene_pos.x(), scene_pos.y(), scene_pos.x(), scene_pos.y(), pen)
+                self.ruler_p1 = self.scene.addEllipse(scene_pos.x() - 4, scene_pos.y() - 4, 8, 8, pen, QBrush(QColor(0, 255, 255)))
+                self.ruler_p2 = self.scene.addEllipse(scene_pos.x() - 4, scene_pos.y() - 4, 8, 8, pen, QBrush(QColor(0, 255, 255)))
+                return True
+            elif event.type() == QEvent.MouseMove and getattr(self, 'ruler_line_item', None):
+                scene_pos = self.view.mapToScene(event.pos())
+                self.ruler_line_item.setLine(self.ruler_start.x(), self.ruler_start.y(), scene_pos.x(), scene_pos.y())
+                self.ruler_p2.setRect(scene_pos.x() - 4, scene_pos.y() - 4, 8, 8)
+                return True
+            elif event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton and getattr(self, 'ruler_line_item', None):
+                scene_pos = self.view.mapToScene(event.pos())
+                dx = scene_pos.x() - self.ruler_start.x()
+                dy = scene_pos.y() - self.ruler_start.y()
+                
+                self.scene.removeItem(self.ruler_line_item)
+                self.scene.removeItem(self.ruler_p1)
+                self.scene.removeItem(self.ruler_p2)
+                self.ruler_line_item = None
+                self.ruler_p1 = None
+                self.ruler_p2 = None
+                
+                # Calculate angle in degrees
+                if dx != 0 or dy != 0:
+                    angle = math.degrees(math.atan2(dy, dx))
+                    
+                    # Normalize angle to -90..90
+                    while angle > 90: angle -= 180
+                    while angle < -90: angle += 180
+                    
+                    if angle > 45:
+                        deviation = angle - 90 # Line is almost vertical (leaning right)
+                    elif angle < -45:
+                        deviation = angle + 90 # Line is almost vertical (leaning left)
+                    else:
+                        deviation = angle # Line is almost horizontal
+                        
+                    if hasattr(self.controller, 'apply_straighten_angle'):
+                        self.controller.apply_straighten_angle(deviation)
+                        
+                    # Reset tool to pan
+                    self._activate_pan_tool()
+                return True
+                
+        return super().eventFilter(source, event)
+
     def _connect_signals(self) -> None:
         self.controller.image_loaded.connect(self.render_container)
         self.controller.image_processed.connect(self.render_container)

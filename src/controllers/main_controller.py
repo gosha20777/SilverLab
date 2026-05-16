@@ -24,6 +24,7 @@ class MainController(QObject):
     folder_loaded = Signal()
     status_message_changed = Signal(str)
     pipeline_changed = Signal()
+    tool_activation_requested = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -151,25 +152,31 @@ class MainController(QObject):
         if not self.sequence.active_container: return False
         display_img = self.sequence.active_container.get_display_image(is_proxy=False)
         
-        # Apply final crop if necessary
+        # Apply final crop if necessary (Cascading intersection)
         config = self.sequence.active_container.pipeline_config
+        
+        final_l, final_t, final_r, final_b = 0.0, 0.0, 1.0, 1.0
+        
         for node in config.nodes:
-            if getattr(node, "node_type", "") == "SplitterNode" and getattr(node, "enabled", True):
-                fx, fy, fw, fh = getattr(node, 'final_crop', (0.0, 0.0, 1.0, 1.0))
-                bg_h, bg_w = display_img.shape[:2]
-                l, t = max(0, int(round(fx * bg_w))), max(0, int(round(fy * bg_h)))
-                r, b = min(bg_w, int(round((fx + fw) * bg_w))), min(bg_h, int(round((fy + fh) * bg_h)))
-                if l < r and t < b:
-                    display_img = display_img[t:b, l:r]
-                break
-            elif getattr(node, "node_type", "") == "CropNode" and getattr(node, "enabled", True):
-                nx, ny, nw, nh = getattr(node, 'bbox', (0.0, 0.0, 1.0, 1.0))
-                bg_h, bg_w = display_img.shape[:2]
-                l, t = max(0, int(round(nx * bg_w))), max(0, int(round(ny * bg_h)))
-                r, b = min(bg_w, int(round((nx + nw) * bg_w))), min(bg_h, int(round((ny + nh) * bg_h)))
-                if l < r and t < b:
-                    display_img = display_img[t:b, l:r]
-                break
+            if getattr(node, "enabled", True):
+                if getattr(node, "node_type", "") == "SplitterNode":
+                    fx, fy, fw, fh = getattr(node, 'final_crop', (0.0, 0.0, 1.0, 1.0))
+                    final_l = max(final_l, fx)
+                    final_t = max(final_t, fy)
+                    final_r = min(final_r, fx + fw)
+                    final_b = min(final_b, fy + fh)
+                elif getattr(node, "node_type", "") == "CropNode":
+                    nx, ny, nw, nh = getattr(node, 'bbox', (0.0, 0.0, 1.0, 1.0))
+                    final_l = max(final_l, nx)
+                    final_t = max(final_t, ny)
+                    final_r = min(final_r, nx + nw)
+                    final_b = min(final_b, ny + nh)
+                    
+        if final_l < final_r and final_t < final_b:
+            bg_h, bg_w = display_img.shape[:2]
+            l, t = max(0, int(round(final_l * bg_w))), max(0, int(round(final_t * bg_h)))
+            r, b = min(bg_w, int(round(final_r * bg_w))), min(bg_h, int(round(final_b * bg_h)))
+            display_img = display_img[t:b, l:r]
                 
         return save_image(display_img, save_path)
 
@@ -182,6 +189,38 @@ class MainController(QObject):
                     setattr(config.nodes[index], k, v)
             self._trigger_pipeline(start_node_index=index, is_interactive=True)
 
+    def handle_node_action(self, node_config, action_id: str) -> None:
+        if action_id == "rotate_cw":
+            if hasattr(node_config, "angle_90"):
+                node_config.angle_90 = (node_config.angle_90 - 90) % 360
+        elif action_id == "rotate_ccw":
+            if hasattr(node_config, "angle_90"):
+                node_config.angle_90 = (node_config.angle_90 + 90) % 360
+        elif action_id == "activate_ruler":
+            self.tool_activation_requested.emit('straighten')
+            return
+            
+        self._trigger_pipeline(start_node_index=0, is_interactive=False)
+
+    def apply_straighten_angle(self, angle: float) -> None:
+        if not self.sequence.active_container: return
+        config = self.sequence.active_container.pipeline_config
+        
+        # Find the rotation node
+        rotation_node = None
+        for node in config.nodes:
+            if getattr(node, "node_type", "") == "RotationNode":
+                rotation_node = node
+                break
+                
+        if rotation_node:
+            # Add to the existing angle and clamp between -45 and 45
+            new_angle = rotation_node.angle + angle
+            rotation_node.angle = max(-45.0, min(45.0, new_angle))
+            rotation_node.enabled = True
+            self.pipeline_changed.emit()
+            self._trigger_pipeline(start_node_index=0, is_interactive=False)
+            
     def update_node_config_final(self) -> None:
         # Full recalculation after slider release
         self._trigger_pipeline(start_node_index=0, is_interactive=False)

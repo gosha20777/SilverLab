@@ -108,6 +108,11 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         # Controller bindings
         self.controller.status_message_changed.connect(self.status_bar.showMessage)
+        self.controller.tool_activation_requested.connect(self._on_tool_activation_requested)
+
+    def _on_tool_activation_requested(self, tool_name: str) -> None:
+        if tool_name == 'straighten':
+            self.canvas_viewport._activate_straighten_tool()
 
     def _on_load_clicked(self) -> None:
         file_paths, _ = QFileDialog.getOpenFileNames(

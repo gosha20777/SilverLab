@@ -4,11 +4,20 @@ from src.models.isp_config import BaseNodeConfig, NodeMetadata, UIElementConfig,
 
 class RotationConfig(BaseNodeConfig):
     node_type: Literal["RotationNode"] = "RotationNode"
-    angle: float = Field(default=0.0, ge=-90.0, le=90.0)
+    angle: float = Field(default=0.0, ge=-45.0, le=45.0)
+    angle_90: int = Field(default=0) # 0, 90, 180, 270
+    flip_h: bool = Field(default=False)
+    flip_v: bool = Field(default=False)
+    
     @classmethod
     def get_ui_schema(cls) -> List[UIElementConfig]:
         return [
-            UIElementConfig(type=UIType.SLIDER, name="Угол", field="angle", min=-15.0, max=15.0)
+            UIElementConfig(type=UIType.BUTTON, name="Повернуть +90°", action_id="rotate_cw"),
+            UIElementConfig(type=UIType.BUTTON, name="Повернуть -90°", action_id="rotate_ccw"),
+            UIElementConfig(type=UIType.CHECKBOX, name="Отразить по горизонтали", field="flip_h"),
+            UIElementConfig(type=UIType.CHECKBOX, name="Отразить по вертикали", field="flip_v"),
+            UIElementConfig(type=UIType.SLIDER, name="Точный Угол", field="angle", min=-45.0, max=45.0),
+            UIElementConfig(type=UIType.BUTTON, name="Инструмент Линейка", action_id="activate_ruler")
         ]
 
     @classmethod
