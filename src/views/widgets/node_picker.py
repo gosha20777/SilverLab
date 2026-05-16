@@ -1,15 +1,16 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout, 
     QLabel, QLineEdit, QSplitter, QWidget, QListWidgetItem, QFrame,
-    QTextBrowser, QComboBox
+    QTextBrowser, QComboBox, QCheckBox
 )
 from PySide6.QtCore import Qt, QSettings, QUrl
 from PySide6.QtGui import QIcon, QFont, QDesktopServices
 from src.core.isp.plugin_manager import plugin_manager
+from src.models.isp_config import NodeMetadata, GroupType
 
 class NodeCardWidget(QWidget):
     """Custom widget for a node item in the list."""
-    def __init__(self, node_type: str, info: dict, is_favorite: bool, toggle_fav_cb):
+    def __init__(self, node_type: str, info: NodeMetadata, is_favorite: bool, toggle_fav_cb):
         super().__init__()
         self.node_type = node_type
         self.info = info
@@ -21,17 +22,17 @@ class NodeCardWidget(QWidget):
         
         # Left side: Text info
         text_layout = QVBoxLayout()
-        title_label = QLabel(info.get("title", node_type))
+        title_label = QLabel(info.title if info else node_type)
         font = title_label.font()
         font.setBold(True)
         title_label.setFont(font)
         
-        desc_label = QLabel(info.get("description_short", ""))
+        desc_label = QLabel(info.description_short if info else "")
         desc_label.setStyleSheet("color: #888; font-size: 11px;")
         desc_label.setWordWrap(True)
         
-        tags = info.get("tags", [])
-        tags_str = ", ".join(tags) if tags else ""
+        tags = [t.label for t in info.tags] if info and info.tags else []
+        tags_str = ", ".join(tags)
         tags_label = QLabel(tags_str)
         tags_label.setStyleSheet("color: #0078D7; font-size: 10px; font-weight: bold;")
         
@@ -68,7 +69,9 @@ class NodePickerDialog(QDialog):
         
         self.settings = QSettings("SilverLab", "Preferences")
         favs = self.settings.value("favorite_nodes", [])
-        if isinstance(favs, str):
+        if favs is None:
+            self.favorites = []
+        elif isinstance(favs, str):
             self.favorites = [favs]
         else:
             self.favorites = list(favs)
@@ -80,7 +83,7 @@ class NodePickerDialog(QDialog):
                 if hasattr(config_cls, 'get_node_info'):
                     info = config_cls.get_node_info()
                 else:
-                    info = {"title": node_type, "description_short": "", "group": "Разное"}
+                    info = NodeMetadata(title=node_type)
                 self.available_nodes.append((node_type, info, config_cls))
                 
         self.selected_config_cls = None
@@ -99,7 +102,7 @@ class NodePickerDialog(QDialog):
         self.group_combo = QComboBox()
         self.group_combo.addItem("Все группы")
         self.group_combo.addItem("Избранные ★")
-        groups = set(info.get("group", "Разное") for _, info, _ in self.available_nodes)
+        groups = set(info.group.label if info else "Разное" for _, info, _ in self.available_nodes)
         for g in sorted(groups):
             self.group_combo.addItem(g)
         self.group_combo.currentTextChanged.connect(self._populate_list)
@@ -170,15 +173,17 @@ class NodePickerDialog(QDialog):
         def sort_key(item):
             ntype, info, _ = item
             is_fav = 0 if ntype in self.favorites else 1
-            return (is_fav, info.get("group", ""), info.get("title", ""))
+            group = info.group.label if info else ""
+            title = info.title if info else ""
+            return (is_fav, group, title)
             
         sorted_nodes = sorted(self.available_nodes, key=sort_key)
         
         for node_type, info, config_cls in sorted_nodes:
             # Filter by Search
-            title = info.get("title", node_type).lower()
-            desc = info.get("description_short", "").lower()
-            tags = " ".join(info.get("tags", [])).lower()
+            title = (info.title if info else node_type).lower()
+            desc = (info.description_short if info else "").lower()
+            tags = " ".join([t.label for t in info.tags] if info and info.tags else []).lower()
             if search_text and search_text not in title and search_text not in desc and search_text not in tags:
                 continue
                 
@@ -187,7 +192,8 @@ class NodePickerDialog(QDialog):
                 if node_type not in self.favorites:
                     continue
             elif selected_group != "Все группы":
-                if info.get("group", "Разное") != selected_group:
+                group_lbl = info.group.label if info else "Разное"
+                if group_lbl != selected_group:
                     continue
                     
             item = QListWidgetItem(self.list_widget)
@@ -215,18 +221,18 @@ class NodePickerDialog(QDialog):
         node_type, info, config_cls = items[0].data(Qt.UserRole)
         self.selected_config_cls = config_cls
         
-        self.detail_title.setText(info.get("title", node_type))
+        self.detail_title.setText(info.title if info else node_type)
         
-        author = info.get("author", "")
-        group = info.get("group", "")
+        author = info.author if info else ""
+        group = info.group.label if info else ""
         self.detail_author.setText(f"Автор: {author} | Категория: {group}")
         
-        desc_long = info.get("description_long", info.get("description_short", ""))
-        url = info.get("url", "")
+        desc_long = info.description_long if info else (info.description_short if info else "")
+        url = info.url if info else ""
         
         html = f"<p style='font-size: 13px; line-height: 1.4;'>{desc_long}</p>"
         
-        tags = info.get("tags", [])
+        tags = [t.label for t in info.tags] if info and info.tags else []
         if tags:
             html += f"<p><b>Теги:</b> {', '.join(tags)}</p>"
             

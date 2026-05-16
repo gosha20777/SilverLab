@@ -108,19 +108,10 @@ class InspectorPanel(QScrollArea):
             layout.addWidget(section)
 
     def _build_node_ui(self, node_config, parent_pipeline, local_index: int, root_index: int) -> CollapsibleSection:
-        node_type = node_config.node_type
-        titles = {
-            "ExposureNode": "Экспозиция",
-            "BlackClipNode": "Срез теней (Black Clip)",
-            "WhitePatchNode": "Баланс Белого (Авто)",
-            "ContrastStretchNode": "Контраст",
-            "AdaptiveGammaNode": "Средние тона (Adaptive Gamma)",
-            "VibranceNode": "Насыщенность (Vibrance)",
-            "RotationNode": "Поворот (Геометрия)",
-            "SplitterNode": "Диптих (Разделение кадра)"
-        }
+        from src.models.isp_config import UIType
         
-        section = CollapsibleSection(titles.get(node_type, node_type), start_collapsed=False)
+        info = node_config.get_node_info()
+        section = CollapsibleSection(info.title, start_collapsed=False)
         section.set_enabled_state(node_config.enabled)
         layout = QVBoxLayout()
         
@@ -147,32 +138,31 @@ class InspectorPanel(QScrollArea):
         section.move_down_requested.connect(lambda: on_move(1))
         section.delete_requested.connect(on_delete)
 
-        # Render data-driven UI schema
+        # Render strongly typed data-driven UI schema
         ui_schema = []
         if hasattr(node_config, "get_ui_schema"):
             ui_schema = node_config.get_ui_schema()
             
         for element in ui_schema:
-            type_ = element.get("type")
-            if type_ == "slider":
+            if element.type == UIType.SLIDER:
                 self._create_slider(
                     layout, 
-                    element["name"], 
-                    element["min"], 
-                    element["max"], 
-                    getattr(node_config, element["field"]), 
+                    element.name, 
+                    element.min, 
+                    element.max, 
+                    getattr(node_config, element.field), 
                     node_config, 
-                    element["field"], 
+                    element.field, 
                     root_index
                 )
-            elif type_ == "checkbox":
-                cb = QCheckBox(element["name"])
-                cb.setChecked(getattr(node_config, element["field"]))
-                cb.stateChanged.connect(lambda state, c=node_config, f=element["field"]: self._on_checkbox_changed(c, f, state))
+            elif element.type == UIType.CHECKBOX:
+                cb = QCheckBox(element.name)
+                cb.setChecked(getattr(node_config, element.field))
+                cb.stateChanged.connect(lambda state, c=node_config, f=element.field: self._on_checkbox_changed(c, f, state))
                 layout.addWidget(cb)
-            elif type_ == "label":
-                layout.addWidget(QLabel(element.get("text", "")))
-            elif type_ == "custom" and element.get("renderer") == "splitter_regions":
+            elif element.type == UIType.LABEL:
+                layout.addWidget(QLabel(element.text))
+            elif element.type == UIType.CUSTOM and element.renderer == "splitter_regions":
                 self._render_splitter_regions(layout, node_config, root_index)
             
         section.set_content_layout(layout)
