@@ -1,5 +1,8 @@
 name: Default Profile
 nodes:
+- node_type: RotationNode
+  enabled: true
+  angle: 0.0
 - node_type: BlackClipNode
   enabled: true
   clip_percent: 0.1
@@ -8,6 +11,10 @@ nodes:
   patch_percent: 99.5
 - node_type: ContrastStretchNode
   enabled: true
+- node_type: AdaptiveGammaNode
+  enabled: true
 - node_type: VibranceNode
   enabled: true
   strength: 0.3
+- node_type: CropNode
+  enabled: true

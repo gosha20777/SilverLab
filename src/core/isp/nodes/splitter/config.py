@@ -8,7 +8,7 @@ class SplitterConfig(BaseNodeConfig):
     feathering: int = Field(default=15, ge=0, le=100)
     regions: list[RegionConfig] = Field(default_factory=list)
     apply_rotation: bool = True
-    target_angle: float = -0.7
+    target_angle: float = 0.0
     angle_tolerance: float = 0.3
     current_angle: float = 0.0
     final_crop: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)

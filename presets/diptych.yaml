@@ -2,7 +2,7 @@ name: Auto Diptych Processing
 nodes:
 - node_type: RotationNode
   enabled: true
-  angle: -0.7
+  angle: 0.0
 - node_type: SplitterNode
   enabled: true
   mode: auto_diptych
@@ -22,6 +22,10 @@ nodes:
       - node_type: WhitePatchNode
         enabled: true
         patch_percent: 99.0
+      - node_type: ContrastStretchNode
+        enabled: true
+      - node_type: AdaptiveGammaNode
+        enabled: true
       - node_type: VibranceNode
         enabled: true
         strength: 0.3
@@ -39,6 +43,10 @@ nodes:
       - node_type: WhitePatchNode
         enabled: true
         patch_percent: 99.0
+      - node_type: ContrastStretchNode
+        enabled: true
+      - node_type: AdaptiveGammaNode
+        enabled: true
       - node_type: VibranceNode
         enabled: true
         strength: 0.3
