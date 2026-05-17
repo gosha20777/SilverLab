@@ -143,6 +143,64 @@ class MainController(QObject):
         files.sort()
         self.load_files(files)
 
+    def batch_export(self, output_folder: str, extension: str = ".jpg") -> None:
+        import os
+        from src.core.io.reader import read_image
+        from src.core.io.writer import save_image
+        from src.models.frame_container import FrameContainer
+        from src.utils.concurrency import Worker
+        
+        def export_task():
+            total = len(self.sequence.items)
+            for i, item in enumerate(self.sequence.items):
+                base_name = "export"
+                if item.file_path:
+                    base_name = os.path.splitext(os.path.basename(item.file_path))[0]
+                    
+                self.status_message_changed.emit(f"Экспорт {i+1}/{total}: {base_name}{extension}...")
+                
+                raw_image = read_image(item.file_path)
+                if raw_image is None: continue
+                
+                container = FrameContainer(item.file_path, raw_image)
+                container.pipeline_config = item.pipeline_config.model_copy(deep=True)
+                
+                self.isp_pipeline.process_container(container, is_proxy=False, start_node_index=0)
+                display_img = container.get_display_image(is_proxy=False)
+                
+                # Cascading Crop logic
+                final_l, final_t, final_r, final_b = 0.0, 0.0, 1.0, 1.0
+                for node in container.pipeline_config.nodes:
+                    if getattr(node, "enabled", True):
+                        if getattr(node, "node_type", "") == "SplitterNode":
+                            fx, fy, fw, fh = getattr(node, 'final_crop', (0.0, 0.0, 1.0, 1.0))
+                            final_l = max(final_l, fx)
+                            final_t = max(final_t, fy)
+                            final_r = min(final_r, fx + fw)
+                            final_b = min(final_b, fy + fh)
+                        elif getattr(node, "node_type", "") == "CropNode":
+                            nx, ny, nw, nh = getattr(node, 'bbox', (0.0, 0.0, 1.0, 1.0))
+                            final_l = max(final_l, nx)
+                            final_t = max(final_t, ny)
+                            final_r = min(final_r, nx + nw)
+                            final_b = min(final_b, ny + nh)
+                            
+                if final_l < final_r and final_t < final_b:
+                    bg_h, bg_w = display_img.shape[:2]
+                    l, t = max(0, int(round(final_l * bg_w))), max(0, int(round(final_t * bg_h)))
+                    r, b = min(bg_w, int(round(final_r * bg_w))), min(bg_h, int(round(final_b * bg_h)))
+                    display_img = display_img[t:b, l:r]
+                    
+                save_path = os.path.join(output_folder, f"{base_name}{extension}")
+                save_image(display_img, save_path)
+                
+            self.status_message_changed.emit(f"Пакетный экспорт завершен! Сохранено {total} файлов.")
+
+        worker = Worker(export_task)
+        self._active_workers.add(worker)
+        worker.signals.finished.connect(lambda w=worker: self._active_workers.discard(w))
+        self.thread_pool.start(worker)
+
     def _on_thumbnail_result_tuple(self, result: tuple) -> None:
         file_path, thumbnail_data = result
         if thumbnail_data is not None:
@@ -199,8 +257,41 @@ class MainController(QObject):
         elif action_id == "activate_ruler":
             self.tool_activation_requested.emit('straighten')
             return
+        elif action_id == "activate_picker":
+            self.tool_activation_requested.emit('picker')
+            return
+        elif action_id == "reset_wb":
+            if hasattr(node_config, "scale_r"):
+                node_config.scale_r = 1.0
+                node_config.scale_g = 1.0
+                node_config.scale_b = 1.0
             
         self._trigger_pipeline(start_node_index=0, is_interactive=False)
+
+    def apply_white_balance(self, r: float, g: float, b: float) -> None:
+        if not self.sequence.active_container: return
+        config = self.sequence.active_container.pipeline_config
+        
+        wb_node = None
+        for node in config.nodes:
+            if getattr(node, "node_type", "") == "ManualWBNode":
+                wb_node = node
+                break
+                
+        if wb_node:
+            target = (r + g + b) / 3.0
+            if r > 0: wb_node.scale_r *= (target / r)
+            if g > 0: wb_node.scale_g *= (target / g)
+            if b > 0: wb_node.scale_b *= (target / b)
+            
+            # clamp scales to valid range (0 to 5)
+            wb_node.scale_r = max(0.0, min(5.0, wb_node.scale_r))
+            wb_node.scale_g = max(0.0, min(5.0, wb_node.scale_g))
+            wb_node.scale_b = max(0.0, min(5.0, wb_node.scale_b))
+            
+            wb_node.enabled = True
+            self.pipeline_changed.emit()
+            self._trigger_pipeline(start_node_index=0, is_interactive=False)
 
     def apply_straighten_angle(self, angle: float) -> None:
         if not self.sequence.active_container: return

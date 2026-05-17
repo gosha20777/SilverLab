@@ -64,6 +64,24 @@ class CanvasViewport(QWidget):
         from PySide6.QtGui import QPen, QColor, QBrush
         import math
         
+        if source == self.view.viewport() and getattr(self, 'current_tool', '') == 'picker':
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                scene_pos = self.view.mapToScene(event.pos())
+                for item in self.scene.items():
+                    if hasattr(item, 'pixmap'):
+                        item_pos = item.mapFromScene(scene_pos)
+                        ix, iy = int(item_pos.x()), int(item_pos.y())
+                        pixmap = item.pixmap()
+                        image = pixmap.toImage()
+                        if 0 <= ix < image.width() and 0 <= iy < image.height():
+                            color = image.pixelColor(ix, iy)
+                            r, g, b = color.redF(), color.greenF(), color.blueF()
+                            if hasattr(self.controller, 'apply_white_balance'):
+                                self.controller.apply_white_balance(r, g, b)
+                            self._activate_pan_tool()
+                        break
+                return True
+                
         if source == self.view.viewport() and getattr(self, 'current_tool', '') == 'straighten':
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
                 scene_pos = self.view.mapToScene(event.pos())

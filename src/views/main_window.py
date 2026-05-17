@@ -22,8 +22,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("SilverLab MVP v0.3")
         self.resize(1200, 800)
 
-        self._setup_menu()
         self._setup_ui()
+        self._setup_menu()
         self._connect_signals()
 
     def _setup_menu(self) -> None:
@@ -44,33 +44,27 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         
         batch_export_action = file_menu.addAction("Пакетный экспорт (Batch Export)...")
-        batch_export_action.triggered.connect(lambda: print("Batch export not implemented"))
+        batch_export_action.triggered.connect(self._on_batch_export_clicked)
         
         file_menu.addSeparator()
         
         exit_action = file_menu.addAction("Выход (Exit)")
         exit_action.triggered.connect(self.close)
 
-        # 2. Image Menu
-        image_menu = menu_bar.addMenu("Изображение (Image)")
+        # 2. View/Tools Menu
+        tools_menu = menu_bar.addMenu("Инструменты (Tools)")
+        tools_menu.addAction("Перемещение (Pan)").triggered.connect(self.canvas_viewport._activate_pan_tool)
+        tools_menu.addAction("Кадрирование (Crop)").triggered.connect(self.canvas_viewport._activate_crop_tool)
+        tools_menu.addAction("Линейка (Straighten)").triggered.connect(self.canvas_viewport._activate_straighten_tool)
+        tools_menu.addAction("Пипетка ББ (Picker)").triggered.connect(self.canvas_viewport._activate_picker_tool)
         
-        tools_menu = image_menu.addMenu("Инструменты (Tools)")
-        tools_menu.addAction("Кадрирование (Crop)").triggered.connect(lambda: print("Crop mock"))
-        tools_menu.addAction("Баланс белого (White Balance)").triggered.connect(lambda: print("WB mock"))
-        
-        geometry_menu = image_menu.addMenu("Геометрия (Geometry)")
-        geometry_menu.addAction("Поворот на 90° по ч.с.").triggered.connect(lambda: print("Rotate CW mock"))
-        geometry_menu.addAction("Поворот на 90° против ч.с.").triggered.connect(lambda: print("Rotate CCW mock"))
-        geometry_menu.addAction("Авто-выравнивание").triggered.connect(lambda: print("Auto-straighten mock"))
-        
-        image_menu.addSeparator()
-        image_menu.addAction("Сбросить настройки (Reset Settings)").triggered.connect(lambda: print("Reset mock"))
-
         # 3. Pipeline Menu
         pipeline_menu = menu_bar.addMenu("Конвейер (Pipeline)")
-        pipeline_menu.addAction("Управление узлами (Manage Nodes)").triggered.connect(lambda: print("Manage nodes mock"))
-        pipeline_menu.addAction("Загрузить пресет (Load Preset)").triggered.connect(lambda: print("Load preset mock"))
-        pipeline_menu.addAction("Сохранить пресет (Save Preset)").triggered.connect(lambda: print("Save preset mock"))
+        pipeline_menu.addAction("Добавить фильтр... (Add Node)").triggered.connect(self.inspector_panel._show_node_picker)
+        pipeline_menu.addAction("Сбросить все настройки (Reset All)").triggered.connect(lambda: print("Not implemented yet"))
+        pipeline_menu.addAction("Применить ко всем файлам (Apply to all)").triggered.connect(self.controller.apply_to_all)
+        pipeline_menu.addAction("Загрузить пресет (Load Preset)").triggered.connect(lambda: print("Load preset not implemented"))
+        pipeline_menu.addAction("Сохранить пресет (Save Preset)").triggered.connect(lambda: print("Save preset not implemented"))
 
     def _setup_ui(self) -> None:
         # Main Layout
@@ -113,6 +107,8 @@ class MainWindow(QMainWindow):
     def _on_tool_activation_requested(self, tool_name: str) -> None:
         if tool_name == 'straighten':
             self.canvas_viewport._activate_straighten_tool()
+        elif tool_name == 'picker':
+            self.canvas_viewport._activate_picker_tool()
 
     def _on_load_clicked(self) -> None:
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -127,8 +123,14 @@ class MainWindow(QMainWindow):
             self.controller.load_folder(folder_path)
 
     def _on_save_current_clicked(self) -> None:
+        default_name = ""
+        active_item = self.controller.sequence.get_item_at(self.controller.sequence.active_index)
+        if active_item and active_item.file_path:
+            base = os.path.splitext(os.path.basename(active_item.file_path))[0]
+            default_name = f"{base}.jpg"
+            
         save_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Image", "", "JPEG (*.jpg);;TIFF (*.tiff);;PNG (*.png)"
+            self, "Save Image", default_name, "JPEG (*.jpg);;TIFF (*.tiff);;PNG (*.png)"
         )
         if save_path:
             success = self.controller.save_current_image(save_path)
@@ -136,3 +138,8 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Saved successfully to {save_path}", 3000)
             else:
                 self.status_bar.showMessage(f"Failed to save {save_path}", 3000)
+                
+    def _on_batch_export_clicked(self) -> None:
+        folder_path = QFileDialog.getExistingDirectory(self, "Select Export Folder")
+        if folder_path:
+            self.controller.batch_export(folder_path)
