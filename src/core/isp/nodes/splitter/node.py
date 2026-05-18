@@ -86,9 +86,10 @@ class SplitterNode(BaseISPNode):
         # Write detected slots to layout_rects
         config.layout_rects = rects_norm
 
-        # Initialize regions ONLY if count doesn't match (preserve user swaps)
         current_file = getattr(pipeline_engine, 'current_file_path', '')
+
         if len(config.regions) != len(rects_norm):
+            # Count mismatch: create fresh regions with empty sub-pipelines
             config.regions = [
                 RegionConfig(
                     source_file=current_file,
@@ -98,10 +99,16 @@ class SplitterNode(BaseISPNode):
                 for r in rects_norm
             ]
         else:
-            # Update source_file for regions that still have empty source_file
-            for region in config.regions:
+            # Count matches: preserve sub-pipelines, sync geometry for native regions
+            for i, r in enumerate(rects_norm):
+                region = config.regions[i]
+                # Fill empty source_file (from apply_to_all or old presets)
                 if not region.source_file:
                     region.source_file = current_file
+                # For native regions, always sync bbox with layout_rects
+                # so that _process_region's rounding-safe shortcut activates.
+                if region.source_file == current_file:
+                    region.bbox = r
 
         if len(rects_px) == 2:
             self._calculate_final_crop(rects_px, bg_w, bg_h, config)
@@ -154,31 +161,40 @@ class SplitterNode(BaseISPNode):
         else:
             source_img = working_image
 
-        # 2. Extract crop from source by region.bbox
-        sh, sw = source_img.shape[:2]
-        sx, sy, s_w, s_h = region.bbox
-        x1, y1 = int(round(sx * sw)), int(round(sy * sh))
-        x2, y2 = int(round((sx + s_w) * sw)), int(round((sy + s_h) * sh))
+        oh, ow = output_image.shape[:2]
+        dx, dy, dw, dh = dest_rect
+        dest_x = int(round(dx * ow))
+        dest_y = int(round(dy * oh))
+        target_w = int(round(dw * ow))
+        target_h = int(round(dh * oh))
+
+        if target_w <= 0 or target_h <= 0:
+            return
+
+        # 2. For native regions with matching coordinates, use dest pixel coords
+        #    directly to avoid ±1px rounding mismatch between source/dest.
+        if is_native and region.bbox == dest_rect:
+            # Exact same normalized coords → use identical pixel coordinates
+            x1, y1 = dest_x, dest_y
+            x2, y2 = dest_x + target_w, dest_y + target_h
+        else:
+            # Different source: compute from region.bbox on source image
+            sh, sw = source_img.shape[:2]
+            sx, sy, s_w, s_h = region.bbox
+            x1, y1 = int(round(sx * sw)), int(round(sy * sh))
+            x2, y2 = int(round((sx + s_w) * sw)), int(round((sy + s_h) * sh))
+
         x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(sw, x2), min(sh, y2)
+        sh_lim, sw_lim = source_img.shape[:2]
+        x2, y2 = min(sw_lim, x2), min(sh_lim, y2)
 
         if x2 <= x1 or y2 <= y1:
             return
 
         crop = source_img[y1:y2, x1:x2].copy()  # .copy() protects ImageProvider cache
-
-        # 3. Crop-to-Fill: fit crop into dest_rect preserving aspect ratio
-        oh, ow = output_image.shape[:2]
-        dx, dy, dw, dh = dest_rect
-        target_w = int(round(dw * ow))
-        target_h = int(round(dh * oh))
-        dest_x = int(round(dx * ow))
-        dest_y = int(round(dy * oh))
         crop_h, crop_w = crop.shape[:2]
 
-        if target_w <= 0 or target_h <= 0:
-            return
-
+        # 3. Crop-to-Fill: only needed when crop size differs from target size
         if crop_w != target_w or crop_h != target_h:
             src_ratio = crop_w / max(crop_h, 1)
             dst_ratio = target_w / max(target_h, 1)

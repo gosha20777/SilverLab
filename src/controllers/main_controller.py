@@ -88,7 +88,7 @@ class MainController(QObject):
         item = next((it for it in self.sequence.items if it.file_path == file_path), None)
         idx = self.sequence.items.index(item) if item else -1
         
-        # Assign config
+        # Assign config (first load only — subsequent loads reuse the same reference)
         if item is not None:
             if item.pipeline_config is None:
                 item.pipeline_config = self.current_preset.model_copy(deep=True)
@@ -98,6 +98,7 @@ class MainController(QObject):
         container = FrameContainer(file_path, image_data)
         self.image_provider.inject(file_path, container.raw_image, container.raw_proxy)
         if item is not None and item.pipeline_config is not None:
+            # Share the SAME reference — all pipeline mutations are visible from both
             container.pipeline_config = item.pipeline_config
 
         self.sequence.set_active(idx, container)
@@ -119,8 +120,11 @@ class MainController(QObject):
                 if getattr(node, "node_type", "") == "SplitterNode":
                     node.mode = "auto_diptych"
                     node.current_angle = 0.0
-                    node.regions = []
                     node.layout_rects = []
+                    # Keep region sub-pipelines intact, reset only geometry
+                    for region in node.regions:
+                        region.source_file = ""
+                        region.bbox = (0.0, 0.0, 0.0, 0.0)
             item.pipeline_config = new_config
             
         self.status_message_changed.emit(f"Пресет применен ко всем {len(self.sequence.items)} файлам.")
