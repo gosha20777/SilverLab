@@ -24,6 +24,7 @@ class BaseNodeConfig(BaseModel):
 PipelineConfigRef = ForwardRef('PipelineConfig')
 
 class RegionConfig(BaseModel):
+    source_file: str = ""  # Path to source file. Empty = current file (filled by SplitterNode).
     bbox: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0) # Normalized x, y, w, h
     pipeline: PipelineConfigRef
     enabled: bool = True

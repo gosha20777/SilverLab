@@ -39,20 +39,23 @@ class SplitterNode(BaseISPNode):
                 image, M, (bg_w, bg_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
             )
 
-        # 3. Regions Detection (if enabled)
+        # 3. Layout & Regions Detection (if enabled)
         if config.mode == "auto_diptych":
-            self._update_regions_auto(working_image, config)
+            self._update_layout_and_regions(working_image, config, pipeline_engine)
 
-        if not config.regions:
+        if not config.layout_rects or not config.regions:
             return working_image
 
-        # 4. Processing Regions
+        # 4. Processing Regions: iterate layout_rects (slots) paired with regions (content)
         output_image = working_image.copy()
         feather = config.feathering
 
-        for region in config.regions:
-            if getattr(region, "enabled", True):
-                self._process_region(output_image, working_image, region, pipeline_engine, feather, is_export)
+        for i, dest_rect in enumerate(config.layout_rects):
+            if i < len(config.regions) and config.regions[i].enabled:
+                self._process_region(
+                    output_image, working_image, dest_rect, config.regions[i],
+                    pipeline_engine, feather, is_export
+                )
 
         # 5. Final Crop (only applied when exporting)
         if is_export:
@@ -67,8 +70,10 @@ class SplitterNode(BaseISPNode):
             left_pts, right_pts, config.target_angle, config.angle_tolerance
         )
 
-    def _update_regions_auto(self, image: np.ndarray, config: SplitterConfig) -> None:
-        """Detects region boundaries automatically based on the strip position."""
+    def _update_layout_and_regions(
+        self, image: np.ndarray, config: SplitterConfig, pipeline_engine
+    ) -> None:
+        """Detects region boundaries and writes them to layout_rects. Initializes regions only if needed."""
         bg_h, bg_w = image.shape[:2]
         left_pts_rot, right_pts_rot, true_center_x_rot, _ = self._get_strip_lines(image)
         
@@ -76,14 +81,27 @@ class SplitterNode(BaseISPNode):
         strip_right = int(np.median([p[0] for p in right_pts_rot])) if right_pts_rot else true_center_x_rot + 10
 
         rects_px = self._find_frame_rects(image, strip_left, strip_right)
-        rects = [(r[0] / bg_w, r[1] / bg_h, r[2] / bg_w, r[3] / bg_h) for r in rects_px]
+        rects_norm = [(r[0] / bg_w, r[1] / bg_h, r[2] / bg_w, r[3] / bg_h) for r in rects_px]
 
-        # Ensure we have enough region configs
-        while len(config.regions) < len(rects):
-            config.regions.append(RegionConfig(bbox=(0.0, 0.0, 0.0, 0.0), pipeline=PipelineConfig()))
+        # Write detected slots to layout_rects
+        config.layout_rects = rects_norm
 
-        for i, r in enumerate(rects):
-            config.regions[i].bbox = r
+        # Initialize regions ONLY if count doesn't match (preserve user swaps)
+        current_file = getattr(pipeline_engine, 'current_file_path', '')
+        if len(config.regions) != len(rects_norm):
+            config.regions = [
+                RegionConfig(
+                    source_file=current_file,
+                    bbox=r,
+                    pipeline=PipelineConfig(),
+                )
+                for r in rects_norm
+            ]
+        else:
+            # Update source_file for regions that still have empty source_file
+            for region in config.regions:
+                if not region.source_file:
+                    region.source_file = current_file
 
         if len(rects_px) == 2:
             self._calculate_final_crop(rects_px, bg_w, bg_h, config)
@@ -112,28 +130,79 @@ class SplitterNode(BaseISPNode):
 
     def _process_region(
         self, 
-        output_image: np.ndarray, 
-        working_image: np.ndarray, 
+        output_image: np.ndarray,
+        working_image: np.ndarray,
+        dest_rect: tuple[float, float, float, float],
         region: RegionConfig, 
         pipeline_engine, 
         feather: int,
         is_export: bool
     ) -> None:
-        """Extracts, processes, and blends a single region."""
-        bg_h, bg_w = working_image.shape[:2]
-        nx, ny, nw, nh = region.bbox
-        x, y = int(round(nx * bg_w)), int(round(ny * bg_h))
-        w, h = int(round(nw * bg_w)), int(round(nh * bg_h))
+        """Extracts content from source, applies Crop-to-Fill, processes, and blends into dest slot."""
+        # 1. Determine source image:
+        #    - For native regions (source == current file): use working_image (already rotated)
+        #    - For external regions: use ImageProvider (raw from disk)
+        current_file = getattr(pipeline_engine, 'current_file_path', '')
+        is_native = (region.source_file == current_file) or (not region.source_file)
 
-        x, y = max(0, x), max(0, y)
-        w, h = min(w, bg_w - x), min(h, bg_h - y)
+        if is_native:
+            source_img = working_image
+        elif pipeline_engine and pipeline_engine.image_provider and region.source_file:
+            source_img = pipeline_engine.image_provider.get_image(
+                region.source_file, is_proxy=not is_export
+            )
+        else:
+            source_img = working_image
 
-        if w <= 0 or h <= 0:
+        # 2. Extract crop from source by region.bbox
+        sh, sw = source_img.shape[:2]
+        sx, sy, s_w, s_h = region.bbox
+        x1, y1 = int(round(sx * sw)), int(round(sy * sh))
+        x2, y2 = int(round((sx + s_w) * sw)), int(round((sy + s_h) * sh))
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(sw, x2), min(sh, y2)
+
+        if x2 <= x1 or y2 <= y1:
             return
 
-        crop = working_image[y : y + h, x : x + w].copy()
+        crop = source_img[y1:y2, x1:x2].copy()  # .copy() protects ImageProvider cache
+
+        # 3. Crop-to-Fill: fit crop into dest_rect preserving aspect ratio
+        oh, ow = output_image.shape[:2]
+        dx, dy, dw, dh = dest_rect
+        target_w = int(round(dw * ow))
+        target_h = int(round(dh * oh))
+        dest_x = int(round(dx * ow))
+        dest_y = int(round(dy * oh))
+        crop_h, crop_w = crop.shape[:2]
+
+        if target_w <= 0 or target_h <= 0:
+            return
+
+        if crop_w != target_w or crop_h != target_h:
+            src_ratio = crop_w / max(crop_h, 1)
+            dst_ratio = target_w / max(target_h, 1)
+
+            if src_ratio > dst_ratio:
+                # Crop wider than slot -> scale by height, trim width
+                scale = target_h / max(crop_h, 1)
+                scaled_w = max(1, int(crop_w * scale))
+                scaled = cv2.resize(crop, (scaled_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+                excess = scaled.shape[1] - target_w
+                crop = scaled[:, excess // 2: excess // 2 + target_w]
+            else:
+                # Crop narrower than slot -> scale by width, trim height
+                scale = target_w / max(crop_w, 1)
+                scaled_h = max(1, int(crop_h * scale))
+                scaled = cv2.resize(crop, (target_w, scaled_h), interpolation=cv2.INTER_LANCZOS4)
+                excess = scaled.shape[0] - target_h
+                crop = scaled[excess // 2: excess // 2 + target_h, :]
+
+        # 4. Run sub-pipeline color correction
         processed_crop = pipeline_engine.run_pipeline_on_image(crop, region.pipeline, is_export=is_export)
-        self._blend_crop(output_image, processed_crop, (x, y, w, h), feather)
+
+        # 5. Blend into output_image at dest_rect coordinates
+        self._blend_crop(output_image, processed_crop, (dest_x, dest_y, target_w, target_h), feather)
 
     def _apply_final_crop(self, image: np.ndarray, config: SplitterConfig) -> np.ndarray:
         """Applies the final crop coordinates to the image."""

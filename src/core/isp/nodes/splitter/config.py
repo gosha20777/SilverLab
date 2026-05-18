@@ -7,6 +7,7 @@ class SplitterConfig(BaseNodeConfig):
     mode: Literal["auto_diptych", "manual"] = "auto_diptych"
     feathering: int = Field(default=15, ge=0, le=100)
     regions: list[RegionConfig] = Field(default_factory=list)
+    layout_rects: list[tuple[float, float, float, float]] = Field(default_factory=list)
     apply_rotation: bool = True
     target_angle: float = 0.0
     angle_tolerance: float = 0.3

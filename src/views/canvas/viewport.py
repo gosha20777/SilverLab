@@ -1,5 +1,6 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QToolBar
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QToolBar, QMenu
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QCursor
 from src.controllers.main_controller import MainController
 from src.models.frame_container import FrameContainer
 from src.utils.converters import numpy_to_qpixmap
@@ -35,6 +36,12 @@ class CanvasViewport(QWidget):
         self.view.setStyleSheet("background-color: #1e1e1e; border: none;")
         self.view.setDragMode(QGraphicsView.ScrollHandDrag) # Default to Pan tool
         self.view.wheelEvent = self._on_canvas_wheel_event
+        
+        # Enable Drop for Diptych Swap
+        self.view.setAcceptDrops(True)
+        self.view.dragEnterEvent = self._on_drag_enter
+        self.view.dragMoveEvent = self._on_drag_move
+        self.view.dropEvent = self._on_drop
         
         self.layout.addWidget(self.view)
         
@@ -214,8 +221,8 @@ class CanvasViewport(QWidget):
             if not node.enabled: continue
             
             if node.node_type == "SplitterNode":
-                for idx, region in enumerate(node.regions):
-                    nx, ny, nw, nh = region.bbox
+                for idx, layout_rect in enumerate(getattr(node, 'layout_rects', [])):
+                    nx, ny, nw, nh = layout_rect
                     rx, ry = nx * w, ny * h
                     rw, rh = nw * w, nh * h
                     
@@ -223,7 +230,7 @@ class CanvasViewport(QWidget):
                         rect_item = ResizableRectItem(idx, QRectF(0, 0, rw, rh))
                         rect_item.setPos(rx, ry)
                         rect_item.set_edit_mode(is_editable)
-                        rect_item.setZValue(1) # Regions are above final_crop
+                        rect_item.setZValue(1)
                         rect_item.signals.rect_changed.connect(
                             lambda r_idx, new_rect, n=node, bw=w, bh=h: self._on_bbox_changed(r_idx, new_rect, n, bw, bh)
                         )
@@ -273,12 +280,19 @@ class CanvasViewport(QWidget):
         elif region_index == -1:
             target_node.final_crop = (nx, ny, nw, nh)
             target_node.mode = "manual"
-        else:
-            target_node.regions[region_index].bbox = (nx, ny, nw, nh)
-            # Re-calculate final crop based on new regions
-            if len(target_node.regions) == 2:
-                r1 = target_node.regions[0].bbox
-                r2 = target_node.regions[1].bbox
+        elif region_index >= 0:
+            if hasattr(target_node, 'layout_rects') and region_index < len(target_node.layout_rects):
+                target_node.layout_rects[region_index] = (nx, ny, nw, nh)
+            # Sync region.bbox only for native (non-swapped) regions
+            if region_index < len(target_node.regions):
+                region = target_node.regions[region_index]
+                current_path = self.controller.sequence.active_container.file_path if self.controller.sequence.active_container else ""
+                if region.source_file == current_path or not region.source_file:
+                    region.bbox = (nx, ny, nw, nh)
+            # Re-calculate final crop based on new layout_rects
+            if hasattr(target_node, 'layout_rects') and len(target_node.layout_rects) == 2:
+                r1 = target_node.layout_rects[0]
+                r2 = target_node.layout_rects[1]
                 top = min(r1[1], r2[1])
                 bottom = max(r1[1] + r1[3], r2[1] + r2[3])
                 left = min(r1[0], r2[0])
@@ -295,3 +309,69 @@ class CanvasViewport(QWidget):
         
         self.controller.pipeline_changed.emit()
         self.controller._trigger_pipeline(start_node_index=0, is_interactive=False)
+
+    # --- Drag & Drop for Diptych Swap ---
+
+    def _on_drag_enter(self, event) -> None:
+        """Accept drag events that carry file path data."""
+        if event.mimeData().hasText() or event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _on_drag_move(self, event) -> None:
+        """Accept drag move to allow drop."""
+        event.acceptProposedAction()
+
+    def _on_drop(self, event) -> None:
+        """Handle drop: determine which slot was targeted, show region picker."""
+        # Extract file_path from mime data
+        mime = event.mimeData()
+        file_path = ""
+        if mime.hasText():
+            file_path = mime.text().strip()
+        elif mime.hasUrls():
+            urls = mime.urls()
+            if urls:
+                file_path = urls[0].toLocalFile()
+
+        if not file_path:
+            event.ignore()
+            return
+
+        # Convert mouse position to normalized canvas coordinates
+        scene_pos = self.view.mapToScene(event.position().toPoint())
+        scene_rect = self.view.sceneRect()
+        if scene_rect.width() <= 0 or scene_rect.height() <= 0:
+            event.ignore()
+            return
+
+        norm_x = scene_pos.x() / scene_rect.width()
+        norm_y = scene_pos.y() / scene_rect.height()
+
+        # Ask controller which slot is under the cursor
+        slot_index = self.controller.get_diptych_slot_at_point(norm_x, norm_y)
+
+        if slot_index >= 0:
+            self._show_region_picker(file_path, slot_index)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _show_region_picker(self, source_file: str, target_slot: int) -> None:
+        """Shows a popup menu to choose which region from source_file to swap in."""
+        menu = QMenu(self)
+        menu.addAction(
+            "⬅ Левый регион (Left)",
+            lambda: self.controller.swap_diptych_region(target_slot, source_file, 0),
+        )
+        menu.addAction(
+            "➡ Правый регион (Right)",
+            lambda: self.controller.swap_diptych_region(target_slot, source_file, 1),
+        )
+        menu.addSeparator()
+        menu.addAction(
+            "📄 Весь файл целиком",
+            lambda: self.controller.swap_diptych_region(target_slot, source_file, -1),
+        )
+        menu.popup(QCursor.pos())

@@ -1,4 +1,7 @@
+from typing import Optional
+
 import numpy as np
+
 from src.models.frame_container import FrameContainer
 from src.core.isp.plugin_manager import plugin_manager
 
@@ -6,10 +9,12 @@ class ISPPipeline:
     """
     Orchestrator that applies a chain of ISP nodes to an image based on its PipelineConfig.
     """
-    def __init__(self) -> None:
+    def __init__(self, image_provider=None) -> None:
         # Instantiate all stateless nodes once
         self.node_instances = {name: cls() for name, cls in plugin_manager.nodes.items()}
         self.registry = self.node_instances
+        self.image_provider = image_provider
+        self.current_file_path: str = ""
 
     def run_pipeline_on_image(self, image: np.ndarray, pipeline_config, is_export: bool = False) -> np.ndarray:
         """
@@ -34,6 +39,7 @@ class ISPPipeline:
         Executes the ISP pipeline on the container's image.
         Supports proxy processing and intermediate node caching for fast real-time UI response.
         """
+        self.current_file_path = container.file_path
         # Create a shallow copy to prevent IndexError if the UI thread modifies the list mid-flight
         nodes_config = list(container.pipeline_config.nodes)
         

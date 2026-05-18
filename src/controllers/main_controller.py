@@ -6,6 +6,7 @@ from src.models.image_sequence import ImageSequence
 from src.core.isp.pipeline import ISPPipeline
 from src.core.io.reader import read_image, generate_thumbnail
 from src.core.io.writer import save_image
+from src.core.io.image_provider import ImageProvider
 from src.utils.concurrency import Worker
 
 
@@ -29,7 +30,8 @@ class MainController(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.sequence = ImageSequence()
-        self.isp_pipeline = ISPPipeline()
+        self.image_provider = ImageProvider()
+        self.isp_pipeline = ISPPipeline(image_provider=self.image_provider)
         self.thread_pool = QThreadPool.globalInstance()
         self._active_workers = set()
         self.current_job_id = 0
@@ -94,6 +96,7 @@ class MainController(QObject):
             print("Warning: Loaded image not in sequence items.")
 
         container = FrameContainer(file_path, image_data)
+        self.image_provider.inject(file_path, container.raw_image, container.raw_proxy)
         if item is not None and item.pipeline_config is not None:
             container.pipeline_config = item.pipeline_config
 
@@ -116,6 +119,8 @@ class MainController(QObject):
                 if getattr(node, "node_type", "") == "SplitterNode":
                     node.mode = "auto_diptych"
                     node.current_angle = 0.0
+                    node.regions = []
+                    node.layout_rects = []
             item.pipeline_config = new_config
             
         self.status_message_changed.emit(f"Пресет применен ко всем {len(self.sequence.items)} файлам.")
@@ -163,6 +168,7 @@ class MainController(QObject):
                 if raw_image is None: continue
                 
                 container = FrameContainer(item.file_path, raw_image)
+                self.image_provider.inject(item.file_path, container.raw_image, container.raw_proxy)
                 container.pipeline_config = item.pipeline_config.model_copy(deep=True)
                 
                 self.isp_pipeline.process_container(container, is_proxy=False, start_node_index=0)
@@ -348,3 +354,95 @@ class MainController(QObject):
         if 0 <= index < len(config.nodes):
             config.nodes[index].enabled = state
             self._trigger_pipeline(start_node_index=index, is_interactive=False)
+
+    # --- Diptych Swap ---
+
+    def swap_diptych_region(self, slot_index: int, source_file: str, source_region_index: int) -> None:
+        """
+        Replaces the content of slot `slot_index` in the active diptych
+        with a region from `source_file`.
+
+        Args:
+            slot_index: Index of the target slot (layout_rect) on the current canvas.
+            source_file: Path to the donor file.
+            source_region_index: Index of the region to copy from the donor.
+                                 -1 means "use entire file".
+        """
+        if not self.sequence.active_container:
+            return
+
+        config = self.sequence.active_container.pipeline_config
+
+        # Find SplitterNode
+        splitter_config = None
+        for node in config.nodes:
+            if getattr(node, "node_type", "") == "SplitterNode":
+                splitter_config = node
+                break
+
+        if not splitter_config or slot_index >= len(splitter_config.regions):
+            return
+
+        from src.models.isp_config import RegionConfig, PipelineConfig
+
+        if source_region_index == -1:
+            # Use entire file
+            splitter_config.regions[slot_index] = RegionConfig(
+                source_file=source_file,
+                bbox=(0.0, 0.0, 1.0, 1.0),
+                pipeline=PipelineConfig(),
+            )
+        else:
+            # Try to copy RegionConfig from donor's pipeline
+            source_item = next(
+                (it for it in self.sequence.items if it.file_path == source_file), None
+            )
+            donor_region = None
+            if source_item and source_item.pipeline_config:
+                for node in source_item.pipeline_config.nodes:
+                    if getattr(node, "node_type", "") == "SplitterNode":
+                        regions = getattr(node, "regions", [])
+                        if source_region_index < len(regions):
+                            donor_region = regions[source_region_index].model_copy(deep=True)
+                        break
+
+            if donor_region:
+                # Ensure source_file points to the donor file
+                donor_region.source_file = source_file
+                splitter_config.regions[slot_index] = donor_region
+            else:
+                # Fallback: use entire file
+                splitter_config.regions[slot_index] = RegionConfig(
+                    source_file=source_file,
+                    bbox=(0.0, 0.0, 1.0, 1.0),
+                    pipeline=PipelineConfig(),
+                )
+
+        splitter_config.mode = "manual"
+        self.pipeline_changed.emit()
+        self._trigger_pipeline(start_node_index=0, is_interactive=False)
+        self.status_message_changed.emit(
+            f"Свап выполнен: слот {slot_index} ← {source_file.split('/')[-1]}"
+        )
+
+    def get_diptych_slot_at_point(self, norm_x: float, norm_y: float) -> int:
+        """
+        Determines which layout_rect slot contains the given normalized point.
+
+        Args:
+            norm_x: Normalized X coordinate (0..1).
+            norm_y: Normalized Y coordinate (0..1).
+
+        Returns:
+            int: Slot index, or -1 if no slot found.
+        """
+        if not self.sequence.active_container:
+            return -1
+
+        for node in self.sequence.active_container.pipeline_config.nodes:
+            if getattr(node, "node_type", "") == "SplitterNode":
+                for i, rect in enumerate(getattr(node, "layout_rects", [])):
+                    rx, ry, rw, rh = rect
+                    if rx <= norm_x <= rx + rw and ry <= norm_y <= ry + rh:
+                        return i
+        return -1

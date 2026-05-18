@@ -1,10 +1,42 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QListWidget, QListWidgetItem, QListView
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QSize, QMimeData
+from PySide6.QtGui import QIcon, QDrag
 import numpy as np
 import os
 from src.controllers.main_controller import MainController
 from src.utils.converters import numpy_to_qpixmap
+
+
+class DraggableListWidget(QListWidget):
+    """
+    Custom QListWidget that packs the full file path (Qt.UserRole)
+    into QMimeData as plain text during drag operations.
+
+    Default QListWidget only packs the display text (basename),
+    which is useless for the drop handler that needs the full path.
+    """
+
+    def startDrag(self, supportedActions) -> None:
+        item = self.currentItem()
+        if not item:
+            return
+
+        file_path = item.data(Qt.UserRole)
+        if not file_path:
+            return
+
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(file_path)
+        drag.setMimeData(mime_data)
+
+        # Use the item's icon as drag pixmap
+        icon = item.icon()
+        if not icon.isNull():
+            drag.setPixmap(icon.pixmap(64, 64))
+
+        drag.exec(Qt.CopyAction)
+
 
 class SequencePanel(QWidget):
     """
@@ -17,13 +49,15 @@ class SequencePanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         
-        self.list_widget = QListWidget()
+        self.list_widget = DraggableListWidget()
         self.list_widget.setViewMode(QListView.IconMode)
         self.list_widget.setIconSize(QSize(180, 180))
         self.list_widget.setResizeMode(QListView.Adjust)
         self.list_widget.setSpacing(5)
         self.list_widget.setMovement(QListView.Static)
         self.list_widget.setWordWrap(True)
+        self.list_widget.setDragEnabled(True)
+        self.list_widget.setDragDropMode(QListWidget.DragOnly)
         self.list_widget.setStyleSheet(
             "QListWidget { background-color: #2b2b2b; border: none; } "
             "QListWidget::item { padding: 2px; }"
@@ -50,8 +84,6 @@ class SequencePanel(QWidget):
             list_item = QListWidgetItem(os.path.basename(path))
             list_item.setData(Qt.UserRole, path)
             list_item.setTextAlignment(Qt.AlignCenter)
-            # Force Qt to reserve space for the icon before it asynchronously loads
-            # We use a 180x180 square as a placeholder. It will be dynamically resized later.
             list_item.setSizeHint(QSize(180, 180)) 
             self.list_widget.addItem(list_item)
             self.items_map[path] = list_item
@@ -62,14 +94,9 @@ class SequencePanel(QWidget):
             pixmap = numpy_to_qpixmap(thumbnail_data)
             list_item.setIcon(QIcon(pixmap))
             
-            # Dynamically calculate the item's height based on the image's aspect ratio
             h, w = thumbnail_data.shape[:2]
-            
-            # Qt scales the icon to fit within the 180x180 box
             scale = 180 / max(h, w)
             scaled_h = int(h * scale)
-            
-            # Reserve 180px width for text wrapping, and scaled_h + 30px for the text height
             list_item.setSizeHint(QSize(180, scaled_h + 30))
             
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
