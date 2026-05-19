@@ -17,7 +17,7 @@ hidden_imports = [
 hidden_imports += collect_submodules('src.core.isp.nodes')
 
 a = Analysis(
-    ['src/main.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     # Package presets and assets so the standalone app can find them
