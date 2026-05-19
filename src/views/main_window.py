@@ -19,7 +19,7 @@ class MainWindow(QMainWindow):
     def __init__(self, controller: MainController) -> None:
         super().__init__()
         self.controller = controller
-        self.setWindowTitle("SilverLab MVP v0.3")
+        self.setWindowTitle("SilverLab v0.3.0")
         self.resize(1200, 800)
 
         self._setup_ui()
