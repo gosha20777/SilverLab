@@ -105,7 +105,7 @@ jobs:
       - name: Build Flatpak
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak-builder --repo=repo --force-clean --install-deps-from=flathub build-dir packaging/linux/com.silverlab.SilverLab.yml
+          flatpak-builder --user --repo=repo --force-clean --install-deps-from=flathub build-dir packaging/linux/com.silverlab.SilverLab.yml
           flatpak build-bundle repo dist/SilverLab-Linux.flatpak com.silverlab.SilverLab
           
       - name: Upload Linux Artifact
