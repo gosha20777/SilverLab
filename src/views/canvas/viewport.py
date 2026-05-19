@@ -49,16 +49,28 @@ class CanvasViewport(QWidget):
         
     def _on_canvas_wheel_event(self, event) -> None:
         """
-        Zoom with mouse wheel.
+        Zoom with mouse wheel or trackpad pinch/scroll gesture.
+
+        Mouse wheel: uses angleDelta (discrete steps of ±120).
+        Trackpad:    uses pixelDelta (high-resolution continuous values).
         """
         zoom_in_factor = 1.15
         zoom_out_factor = 1.0 / zoom_in_factor
-        
-        if event.angleDelta().y() > 0:
-            zoom_factor = zoom_in_factor
+
+        # Determine zoom direction from angleDelta (mouse) or pixelDelta (trackpad)
+        angle = event.angleDelta().y()
+        pixel = event.pixelDelta().y() if event.pixelDelta() else 0
+
+        if angle != 0:
+            # Mouse wheel: discrete zoom
+            zoom_factor = zoom_in_factor if angle > 0 else zoom_out_factor
+        elif pixel != 0:
+            # Trackpad: continuous zoom — scale proportionally to gesture magnitude
+            zoom_factor = 1.0 + pixel / 300.0
+            zoom_factor = max(0.5, min(zoom_factor, 2.0))  # clamp to sane range
         else:
-            zoom_factor = zoom_out_factor
-            
+            return
+
         self.view.scale(zoom_factor, zoom_factor)
         
         # Event filter for ruler tool

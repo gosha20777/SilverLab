@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 from PySide6.QtCore import QObject, Signal, Slot, QThreadPool
 from src.models.frame_container import FrameContainer
@@ -37,9 +38,20 @@ class MainController(QObject):
         self.current_job_id = 0
         self.current_preset = self._load_default_preset()
 
+    @staticmethod
+    def _get_app_base_path() -> str:
+        """Returns the base path for bundled app resources (presets, assets)."""
+        if getattr(sys, 'frozen', False):
+            # PyInstaller: resources are in _MEIPASS temp directory
+            return sys._MEIPASS
+        else:
+            # Dev mode: project root (two levels up from this file)
+            return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
     def _load_default_preset(self) -> PipelineConfig:
         try:
-            return PipelineConfig.from_yaml("presets/default.yaml")
+            preset_path = os.path.join(self._get_app_base_path(), "presets", "default.yaml")
+            return PipelineConfig.from_yaml(preset_path)
         except Exception as e:
             print(f"Could not load default preset, using empty: {e}")
             return PipelineConfig()
