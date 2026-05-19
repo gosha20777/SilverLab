@@ -1,0 +1,139 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          
+      - name: Build with PyInstaller
+        run: pyinstaller SilverLab.spec
+        
+      - name: Compile Inno Setup Script
+        # ISCC is pre-installed on GitHub Actions windows runners
+        run: iscc packaging/windows/SilverLab.iss
+        
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SilverLab-Windows
+          path: dist/SilverLab-Windows-Setup.exe
+
+  build-macos:
+    runs-on: macos-14 # ARM64 (Apple Silicon)
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          
+      - name: Build with PyInstaller
+        run: pyinstaller SilverLab.spec
+        
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "SilverLab Installer" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "SilverLab.app" 200 190 \
+            --hide-extension "SilverLab.app" \
+            --app-drop-link 600 185 \
+            "dist/SilverLab-macOS-ARM64.dmg" \
+            "dist/SilverLab.app"
+            
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SilverLab-macOS-ARM64
+          path: dist/SilverLab-macOS-ARM64.dmg
+
+  build-linux-flatpak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          
+      - name: Build with PyInstaller
+        run: pyinstaller SilverLab.spec
+        
+      - name: Install Flatpak Builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --repo=repo --force-clean build-dir packaging/linux/com.silverlab.SilverLab.yml
+          flatpak build-bundle repo dist/SilverLab-Linux.flatpak com.silverlab.SilverLab
+          
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SilverLab-Linux-Flatpak
+          path: dist/SilverLab-Linux.flatpak
+
+  release:
+    needs: [build-windows, build-macos, build-linux-flatpak]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SilverLab-Windows
+          path: release-assets
+          
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SilverLab-macOS-ARM64
+          path: release-assets
+          
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SilverLab-Linux-Flatpak
+          path: release-assets
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

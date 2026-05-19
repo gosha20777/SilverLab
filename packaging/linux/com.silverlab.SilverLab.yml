@@ -1,0 +1,27 @@
+app-id: com.silverlab.SilverLab
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: SilverLab
+finish-args:
+  # UI needs
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  # Access to files
+  - --filesystem=host
+modules:
+  - name: silverlab
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin/SilverLab_app
+      - cp -r dist/SilverLab/* /app/bin/SilverLab_app/
+      # Create a wrapper script to run the binary
+      - echo '#!/bin/sh' > /app/bin/SilverLab
+      - echo 'exec /app/bin/SilverLab_app/SilverLab "$@"' >> /app/bin/SilverLab
+      - chmod +x /app/bin/SilverLab
+      - install -Dm644 src/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.silverlab.SilverLab.png
+    sources:
+      - type: dir
+        path: ../../
