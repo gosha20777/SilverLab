@@ -11,7 +11,11 @@ def main() -> None:
     Entry point for the SilverLab application.
     Initializes the dependency injection container and starts the UI.
     """
+    import os
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+    
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     
     # Load ISP Plugins
     plugin_manager.load_plugins()

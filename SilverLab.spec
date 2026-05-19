@@ -64,7 +64,7 @@ exe = EXE(
 )
 
 if sys.platform.startswith('linux'):
-    exclude_libs = ('libstdc++.so', 'libgcc_s.so', 'libc.so', 'libm.so', 'libsystemd.so', 'libglib-2.0.so', 'libselinux.so', 'libmount.so', 'libblkid.so', 'libpcre.so', 'libpcre2.so')
+    exclude_libs = ('libstdc++.so', 'libgcc_s.so', 'libc.so', 'libm.so', 'libsystemd.so', 'libglib-2.0.so', 'libselinux.so', 'libmount.so', 'libblkid.so', 'libpcre.so', 'libpcre2.so', 'libfontconfig.so', 'libfreetype.so', 'libharfbuzz.so', 'libpng16.so')
     a.binaries = [x for x in a.binaries if not x[0].startswith(exclude_libs)]
 
 coll = COLLECT(
