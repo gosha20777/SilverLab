@@ -102,6 +102,11 @@ class NodeSettingsSection(CollapsibleSection):
         btn.clicked.connect(on_click)
         layout.addWidget(btn)
 
+    def _refresh_ui(self, container=None):
+        if hasattr(self, '_update_callbacks'):
+            for cb in self._update_callbacks:
+                cb()
+
     def _create_slider(self, layout, element):
         name = element.name
         min_val = element.min
@@ -126,6 +131,12 @@ class NodeSettingsSection(CollapsibleSection):
             label.setText(f"{name}: {real_val:.2f}")
             setattr(self.node_config, field_name, real_val)
             
+            # Disable auto_levels if user manually moves any slider
+            if field_name != "auto_levels" and getattr(self.node_config, "auto_levels", False):
+                self.node_config.auto_levels = False
+                if hasattr(self, '_refresh_ui'):
+                    self._refresh_ui()
+
             if field_name == "current_angle" and hasattr(self.node_config, "mode"):
                 self.node_config.mode = "manual"
                 
@@ -137,6 +148,21 @@ class NodeSettingsSection(CollapsibleSection):
         slider.valueChanged.connect(on_change)
         slider.sliderReleased.connect(on_release)
 
+        if not hasattr(self, '_update_callbacks'):
+            self._update_callbacks = []
+            self.inspector.controller.image_processed.connect(self._refresh_ui)
+
+        def update_ui():
+            curr = getattr(self.node_config, field_name)
+            pos = int(((curr - min_val) / (max_val - min_val)) * 100)
+            if max_val == min_val: pos = 0
+            slider.blockSignals(True)
+            slider.setValue(pos)
+            slider.blockSignals(False)
+            label.setText(f"{name}: {curr:.2f}")
+
+        self._update_callbacks.append(update_ui)
+
     def _create_checkbox(self, layout, element):
         cb = QCheckBox(element.name)
         cb.setChecked(getattr(self.node_config, element.field))
@@ -147,6 +173,17 @@ class NodeSettingsSection(CollapsibleSection):
             
         cb.stateChanged.connect(on_checkbox_changed)
         layout.addWidget(cb)
+
+        if not hasattr(self, '_update_callbacks'):
+            self._update_callbacks = []
+            self.inspector.controller.image_processed.connect(self._refresh_ui)
+
+        def update_ui():
+            cb.blockSignals(True)
+            cb.setChecked(getattr(self.node_config, element.field))
+            cb.blockSignals(False)
+
+        self._update_callbacks.append(update_ui)
 
     def _render_splitter_regions(self, layout):
         from PySide6.QtWidgets import QWidget
