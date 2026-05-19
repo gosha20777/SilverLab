@@ -1,4 +1,5 @@
 import os
+import sys
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, 
     QListWidget, QFileDialog, QListWidgetItem, QLabel
@@ -21,6 +22,15 @@ class MainWindow(QMainWindow):
         self.controller = controller
         self.setWindowTitle("SilverLab v0.3.0")
         self.resize(1200, 800)
+        
+        if getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
+        icon_path = os.path.join(base_path, 'src', 'assets', 'icon512.png')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
         self._setup_ui()
         self._setup_menu()
