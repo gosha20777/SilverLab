@@ -21,6 +21,7 @@ modules:
       - echo '#!/bin/sh' > /app/bin/SilverLab
       - echo 'exec /app/bin/SilverLab_app/SilverLab "$@"' >> /app/bin/SilverLab
       - chmod +x /app/bin/SilverLab
+      - install -Dm644 packaging/linux/com.silverlab.SilverLab.desktop /app/share/applications/com.silverlab.SilverLab.desktop
       - install -Dm644 src/assets/icon512.png /app/share/icons/hicolor/512x512/apps/com.silverlab.SilverLab.png
     sources:
       - type: dir

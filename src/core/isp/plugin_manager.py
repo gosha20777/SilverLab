@@ -21,7 +21,24 @@ class PluginManager:
         from src.core.isp.nodes.base_node import BaseISPNode
         from src.models.isp_config import BaseNodeConfig
         
-        for _, name, is_pkg in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
+        import sys
+        
+        if getattr(sys, 'frozen', False):
+            # In PyInstaller, we explicitly import all nodes in __init__.py
+            # So we can just inspect the package module directly
+            for attr_name in dir(package):
+                attr = getattr(package, attr_name)
+                if inspect.isclass(attr):
+                    if issubclass(attr, BaseISPNode) and attr is not BaseISPNode:
+                        self.nodes[attr.__name__] = attr
+                    elif issubclass(attr, BaseNodeConfig) and attr is not BaseNodeConfig:
+                        node_type = attr.model_fields['node_type'].default
+                        self.configs[node_type] = attr
+            return
+
+        modules_to_check = [(name, is_pkg) for _, name, is_pkg in pkgutil.iter_modules(package.__path__, package.__name__ + ".")]
+
+        for name, is_pkg in modules_to_check:
             if is_pkg:
                 try:
                     module = importlib.import_module(name)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=SilverLab
+Comment=Film scanning and image processing application
+Exec=SilverLab %U
+Icon=com.silverlab.SilverLab
+Terminal=false
+Type=Application
+Categories=Graphics;Photography;

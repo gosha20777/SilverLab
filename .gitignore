@@ -227,3 +227,5 @@ ui-layout.md
 _old_code/
 dipchych-swap.md
 build.txt
+repo/
+test-flatpack.sh
