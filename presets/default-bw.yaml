@@ -1,0 +1,28 @@
+name: Default Profile (Black & White)
+nodes:
+- node_type: RotationNode
+  enabled: true
+  angle: 0.0
+  angle_90: 0
+  flip_h: false
+  flip_v: false
+- node_type: MonochromeNode
+  enabled: true
+  auto_levels: true
+  brightness: 0.0
+  contrast: 1.0
+  black_point: 0.0
+  white_point: 1.0
+  shadows: 0.0
+  highlights: 0.0
+  hdr: 0.0
+  sharpness: 0.0
+- node_type: CropNode
+  enabled: true
+  bbox: !!python/tuple
+  - 0.0
+  - 0.0
+  - 1.0
+  - 1.0
+  aspect_ratio: free
+  grid_type: rule_of_thirds

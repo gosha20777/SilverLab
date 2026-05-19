@@ -1,0 +1,48 @@
+name: Auto Diptych Processing (Black & White)
+nodes:
+- node_type: RotationNode
+  enabled: true
+  angle: 0.0
+- node_type: SplitterNode
+  enabled: true
+  mode: auto_diptych
+  feathering: 15
+  regions:
+  - bbox:
+    - 0
+    - 0
+    - 0
+    - 0
+    pipeline:
+      name: Left Region
+      nodes:
+      - node_type: MonochromeNode
+        enabled: true
+        auto_levels: true
+        brightness: 0.0
+        contrast: 1.0
+        black_point: 0.0
+        white_point: 1.0
+        shadows: 0.0
+        highlights: 0.0
+        hdr: 0.0
+        sharpness: 0.0
+  - bbox:
+    - 0
+    - 0
+    - 0
+    - 0
+    pipeline:
+      name: Right Region
+      nodes:
+      - node_type: MonochromeNode
+        enabled: true
+        auto_levels: true
+        brightness: 0.0
+        contrast: 1.0
+        black_point: 0.0
+        white_point: 1.0
+        shadows: 0.0
+        highlights: 0.0
+        hdr: 0.0
+        sharpness: 0.0

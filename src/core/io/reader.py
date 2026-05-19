@@ -11,6 +11,12 @@ def read_image(file_path: str) -> Optional[np.ndarray]:
     if img is None:
         return None
         
+    # Standardize all inputs to 3-channel (BGR)
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    elif len(img.shape) == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        
     if img.dtype == np.uint8:
         return img.astype(np.float32) / 255.0
     elif img.dtype == np.uint16:
